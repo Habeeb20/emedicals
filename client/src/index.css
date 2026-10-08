@@ -1,0 +1,27 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html { @apply antialiased; }
+  body { @apply bg-gray-50 font-sans text-navy-900; }
+}
+
+/* Reusable pieces so every screen looks the same. Colours still come from src/theme/colors.js */
+@layer components {
+  .btn {
+    @apply inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2.5 text-sm font-semibold transition
+      focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2
+      disabled:cursor-not-allowed disabled:opacity-60;
+  }
+  .btn-primary { @apply btn bg-primary-600 text-white hover:bg-primary-700; }
+  .btn-outline { @apply btn border border-gray-300 bg-white text-navy-800 hover:bg-gray-50; }
+  .btn-danger { @apply btn bg-danger text-white hover:bg-danger-dark; }
+
+  .input {
+    @apply w-full rounded-lg border border-gray-300 bg-white px-3.5 py-2.5 text-sm text-navy-900
+      placeholder:text-gray-400 focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/20;
+  }
+  .label { @apply mb-1.5 block text-sm font-medium text-navy-700; }
+  .card { @apply rounded-xl border border-gray-200 bg-white shadow-sm; }
+}
