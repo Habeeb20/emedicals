@@ -14,12 +14,94 @@ import { Interaction } from '../models/User.js';
 import { ordinal, pick, numbers, toImage, setUserImage, validateAll, saveAll, buildProfile, applyUser, applyDoctor, applyStaff, applyOrganization } from '../utils/helpers.js';
 import { USER_FIELDS, DOCTOR_FIELDS, STAFF_FIELDS, ORG_FIELDS } from '../utils/helpers.js';
 import { Review } from '../models/User.js';
+import mongoose from 'mongoose';
+
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const SIGNUP_ROLES = ['patient', 'doctor', 'nurse', 'lab_tech', 'pharmacist', 'hospital_admin', 'mortuary_officer', 'cemetery_officer'];
 // Roles that have a StaffProfile (everything except patient, doctor and super_admin)
 const STAFF_ROLES = ['nurse', 'lab_tech', 'pharmacist', 'hospital_admin', 'mortuary_officer', 'cemetery_officer'];
 const DASHBOARD_LIMIT = 50;
 const EDIRECT_AUTH = 'https://auth.edirect.ng/api/auth/register';
+
+
+const NO_ORGANIZATION_ROLES = ['patient', 'doctor', 'nurse'];
+
+// Every other role runs an organization, so the organization type follows from the role.
+const ORG_TYPES_BY_ROLE = {
+  hospital_admin: ['hospital', 'clinic'],
+  lab_tech: ['lab'],
+  pharmacist: ['pharmacy'],
+  mortuary_officer: ['mortuary'],
+  cemetery_officer: ['cemetery'],
+};
+
+const PAYMENT_MODES = ['arrival', 'booking', 'deposit'];
+const text = (v, max) => String(v ?? '').trim().slice(0, max);
+
+
+
+
+export const buildOrganization = ({ role, input, ownerId, userEmail, userPhone }) => {
+  const data = input && typeof input === 'object' ? input : {};
+
+  const name = text(data.name, 120);
+  if (!name) return { error: 'Organization name is required for this account type' };
+
+  const allowedTypes = ORG_TYPES_BY_ROLE[role] || [];
+  const type = data.type || allowedTypes[0];
+  if (!allowedTypes.includes(type)) return { error: `Organization type must be one of: ${allowedTypes.join(', ')}` };
+
+  const address = data.address && typeof data.address === 'object' ? data.address : {};
+  const doc = {
+    _id: new mongoose.Types.ObjectId(),
+    name,
+    type,
+    owner: ownerId,
+    registrationNumber: text(data.registrationNumber, 60) || undefined,
+    licenseNumber: text(data.licenseNumber, 60) || undefined,
+    email: text(data.email, 120).toLowerCase() || userEmail,   // defaults to the owner's contact details
+    phone: text(data.phone, 30) || userPhone,
+    address: {
+      street: text(address.street, 200),
+      city: text(address.city, 80),
+      state: text(address.state, 60),
+      country: text(address.country, 60) || 'Nigeria',
+    },
+    about: text(data.about, 1000) || undefined,
+    openingHours: text(data.openingHours, 120) || undefined,
+    is24Hours: data.is24Hours === true,
+    offersDelivery: data.offersDelivery === true,
+    departments: [...new Set((Array.isArray(data.departments) ? data.departments : []).map((d) => text(d, 60)).filter(Boolean))].slice(0, 30),
+  };
+
+  if (data.coordinates) {
+    const lat = Number(data.coordinates.lat);
+    const lng = Number(data.coordinates.lng);
+    if (!(Math.abs(lat) <= 90 && Math.abs(lng) <= 180)) return { error: 'Invalid organization coordinates' };
+    doc.coordinates = { lat, lng };
+  }
+
+  // Payment settings only make sense for places patients book appointments at
+  if (data.paymentSettings && ['hospital', 'clinic'].includes(type)) {
+    const { mode } = data.paymentSettings;
+    const appointmentFee = Number(data.paymentSettings.appointmentFee ?? 0);
+    const depositAmount = Number(data.paymentSettings.depositAmount ?? 0);
+    if (!PAYMENT_MODES.includes(mode)) return { error: `Payment mode must be one of: ${PAYMENT_MODES.join(', ')}` };
+    if (!Number.isFinite(appointmentFee) || appointmentFee < 0 || !Number.isFinite(depositAmount) || depositAmount < 0) {
+      return { error: 'Appointment fee and deposit must be positive numbers' };
+    }
+    if (mode === 'booking' && appointmentFee <= 0) return { error: 'Set an appointment fee to use payment on booking' };
+    if (mode === 'deposit' && !(depositAmount > 0 && depositAmount < appointmentFee)) {
+      return { error: 'Deposit must be more than 0 and less than the appointment fee' };
+    }
+    doc.paymentSettings = { mode, appointmentFee, depositAmount: mode === 'deposit' ? depositAmount : 0 };
+  }
+
+  return { doc: new Organization(doc) };
+};
+
+
+
 
 const fail = (res, status, message, extra = {}) => res.status(status).json({ success: false, message, ...extra });
 const normalizeEmail = (email) => String(email || '').trim().toLowerCase();
@@ -70,6 +152,24 @@ export const signup = async (req, res) => {
     if (password.length < 8) return fail(res, 400, 'Password must be at least 8 characters');
     if (!SIGNUP_ROLES.includes(role)) return fail(res, 400, 'Invalid role');
 
+    // The user and the organization point at each other, so both ids are created up front
+    const userId = new mongoose.Types.ObjectId();
+    const needsOrganization = !NO_ORGANIZATION_ROLES.includes(role);
+
+    // Check the organization details BEFORE creating anything, so a bad form never leaves a half-made account
+    let organization = null;
+    if (needsOrganization) {
+      const built = buildOrganization({ role, input: req.body.organization, ownerId: userId, userEmail: email, userPhone: phone });
+      if (built.error) return fail(res, 400, built.error);
+      organization = built.doc;
+      try {
+        await organization.validate();
+      } catch (err) {
+        if (err.name === 'ValidationError') return fail(res, 400, Object.values(err.errors)[0].message);
+        throw err;
+      }
+    }
+
     const existing = await User.findOne({ $or: [{ email }, ...(phone ? [{ phone }] : [])] }).select('email phone');
     if (existing) {
       return fail(res, 409, existing.email === email ? 'Email is already registered' : 'Phone number is already registered');
@@ -80,10 +180,22 @@ export const signup = async (req, res) => {
 
     let user;
     try {
-      user = await User.create({ fullName, email, phone, password, role, gender, dateOfBirth, isApproved: !isStaff });
+      user = await User.create({
+        _id: userId, fullName, email, phone, password, role, gender, dateOfBirth,
+        organization: organization?._id, isApproved: !isStaff,
+      });
     } catch (err) {
       if (err.code === 11000) return fail(res, 409, 'Email or phone number is already registered');
       throw err;
+    }
+
+    if (organization) {
+      try {
+        await organization.save();   // starts as "pending" until an administrator approves it
+      } catch (err) {
+        await User.deleteOne({ _id: user._id });   // don't leave an account behind that has no organization
+        throw err;
+      }
     }
 
     if (role === 'patient') {
@@ -117,13 +229,15 @@ export const signup = async (req, res) => {
         requiresVerification: true,
         requiresApproval: isStaff,
         otpSent: otp.sent,
+        ...(organization && {
+          organization: { _id: organization._id, name: organization.name, type: organization.type, status: organization.status },
+        }),
       },
     });
   } catch (err) {
     return handleError(res, err, 'signup');
   }
 };
-
 /* ------------------------------------------------------------------ */
 /* POST /api/users/login                                               */
 /* ------------------------------------------------------------------ */

@@ -300,7 +300,7 @@ export default function ProfileSettings({ onSaved }) {
     }
 
     try {
-      const res = await api.patch('/users/profile/me', payload);
+      const res = await api.put('/users/profile/me', payload);
       hydrate(res.data);
       onSaved?.(res.data.user);
       setMsg({ type: 'ok', text: 'Profile updated' });

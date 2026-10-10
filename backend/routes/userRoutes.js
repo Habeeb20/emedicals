@@ -30,8 +30,8 @@ router.get('/me', verifyToken, getDashboard);
 
 
 router.get('/profile/me', verifyToken, getMyProfile);
-router.patch('/profile/me', verifyToken, updateMyProfile);
-router.patch('/profile/me/avatar', verifyToken, updateMyAvatar);
+router.put('/profile/me', verifyToken, updateMyProfile);
+router.put('/profile/me/avatar', verifyToken, updateMyAvatar);
 
 
 
