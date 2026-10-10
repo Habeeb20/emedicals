@@ -3,7 +3,7 @@ import DoctorProfile from '../models/DoctorProfile.js';
 import Organization from '../models/Organization.js';
 import { asyncHandler, AppError, rx } from '../utils/helpers.js';
 import { haversineKm, round1, attachTravel, centroidFor, geocodeAddress } from '../services/location.service.js';
-import Interaction from '../models/Interaction.js';
+import { Review, Interaction } from '../models/User.js';
 import { PAYMENT_MODES } from '../models/Appointment.js';
 
 const BOOKABLE_ORGS = ['hospital', 'clinic'];

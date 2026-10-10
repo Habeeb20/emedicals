@@ -1,16 +1,25 @@
 import mongoose from 'mongoose';
 
-const itemSchema = new mongoose.Schema(
-  {
-    medicine: { type: String, required: true },   // free text or name from Medicine catalog
-    dosage: String,                               // "500mg"
-    frequency: String,                            // "twice daily"
-    duration: String,                             // "5 days"
-    instructions: String,
-    quantity: Number,
-  },
-  { _id: false }
-);
+// const itemSchema = new mongoose.Schema(
+//   {
+//     medicine: { type: String, required: true },   // free text or name from Medicine catalog
+//     dosage: String,                               // "500mg"
+//     frequency: String,                            // "twice daily"
+//     duration: String,                             // "5 days"
+//     instructions: String,
+//     quantity: Number,
+//   },
+//   { _id: false }
+// );
+
+const itemSchema = new mongoose.Schema({
+  medicine: { type: String, required: true },
+  dosage: String, frequency: String, duration: String, instructions: String,
+  quantity: Number,
+  purpose: String,
+  dispensedQty: { type: Number, default: 0 },   // NEW
+}, { _id: false });
+// ...and inside prescriptionSchema keep: organization, appointment, purpose
 
 const prescriptionSchema = new mongoose.Schema(
   {

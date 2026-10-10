@@ -13,6 +13,10 @@ import { paystackWebhook } from './controllers/payment.controller.js';
 import { sweepExpiredRequests } from './controllers/quickchat.controller.js';
 import appointmentRoutes from "./routes/appoinmentRoute.js"
 import labRoutes from "./routes/labRoutes.js"
+import engagementRoutes from "./routes/engagementRoutes.js"
+import { chatPlanpaystackWebhook } from './controllers/chatPlan.controller.js';
+import { webhookRouter } from './routes/pharmacy.routes.js';
+import pharmacyRoutes from "./routes/pharmacy.routes.js"
 import http from 'http';
 connectDb()
 const app = express();
@@ -22,6 +26,9 @@ app.post('/api/payments/webhook', express.raw({ type: 'application/json' }), pay
 // Behind a proxy (Render, Railway, Nginx...) so rate limiting sees the real client IP
 if (isProd) app.set('trust proxy', 1);
 
+
+
+ app.use('/api', webhookRouter);
 app.use(morgan('dev'));
 app.use(helmet());
 app.use(
@@ -48,9 +55,12 @@ app.get('/api/health', (_req, res) =>
 
 // Routes
 app.use('/api', appointmentRoutes);
+app.use('/api', pharmacyRoutes);
 app.use("/api/labs", labRoutes)
 app.use('/api/users', userRoutes);
 app.use('/api/super-admin', superAdminRoutes);
+app.use('/api/engagement', engagementRoutes)
+
 app.use((err, _req, res, _next) => res.status(err.status || 500).json({ status: 'error', message: err.message }));
 // 404 + error handling (must come last)
 app.use(notFound);

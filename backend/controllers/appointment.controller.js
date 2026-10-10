@@ -9,7 +9,7 @@ import { notify } from '../services/notify.service.js';
 import { providerRecipients, canManage, confirmAppointment, refreshPaymentStatus, amountDueNow } from '../services/appointment.service.js';
 import { initializePayment } from '../services/payment.service.js';
 import { createPrescription } from './prescription.controller.js';
-
+import User from '../models/User.js';
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
 async function loadManageable(req) {
@@ -212,6 +212,7 @@ export const updateStatus = asyncHandler(async (req, res) => {
   appt.status = status;
 
   if (status === 'completed') {
+      await User.awardPoints(appt.patient, 'APPOINTMENT_COMPLETED', appt._id);
     appt.outcome = { condition, diagnosis, notes, followUpDate, completedAt: new Date() };
     if (prescription?.items?.length) {
       if (req.user.role !== 'doctor') throw new AppError('Only a doctor can prescribe', 403);

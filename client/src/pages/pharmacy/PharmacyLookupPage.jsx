@@ -1,10 +1,16 @@
 import { useEffect, useState } from 'react';
-import { api } from './api';
-import { useDebounced } from './hooks';
-import { Avatar, Badge, Button, Card, ConfirmSheet, EmptyState, ErrorNote, Icon, inputCls, PageHeader, PageShell, Skeleton } from './ui';
-import { PrescriptionItems } from './PrescriptionsPage';
-import { ageFrom } from './format';
+import { Link } from 'react-router-dom';
+import  api  from './api';
+import { useDebounced } from '../appointments/hooks';
 
+import { Avatar, Badge, Card, EmptyState, ErrorNote, Icon, inputCls, PageHeader, PageShell, Skeleton } from '../appointments/ui';
+import PrescriptionsPage from '../appointments/PrescriptionsPage';
+import { ageFrom } from '../appointments/format';
+
+import { PharmacyNav, primaryBtn } from './PharmacyShared';
+
+// Searching is unchanged. Dispensing now happens on the Attend page, which picks the exact
+// product, deducts stock batch by batch (first-expiry-first-out), bills and notifies the patient.
 export default function PharmacyLookupPage() {
   const [q, setQ] = useState('');
   const dq = useDebounced(q, 400);
@@ -12,8 +18,6 @@ export default function PharmacyLookupPage() {
   const [via, setVia] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const [target, setTarget] = useState(null);   // { rx, status }
-  const [busy, setBusy] = useState(false);
 
   useEffect(() => {
     if (dq.trim().length < 2) { setResults(null); setError(''); return undefined; }
@@ -26,18 +30,10 @@ export default function PharmacyLookupPage() {
     return () => { off = true; };
   }, [dq]);
 
-  const dispense = async () => {
-    setBusy(true);
-    try {
-      await api(`/prescriptions/${target.rx.id}/dispense`, { method: 'PATCH', body: { status: target.status, code: via === 'code' ? target.rx.code : undefined } });
-      setResults((l) => l.map((x) => (x.id === target.rx.id ? { ...x, status: target.status } : x)));
-      setTarget(null);
-    } catch (e) { setError(e.message); setTarget(null); } finally { setBusy(false); }
-  };
-
   return (
     <PageShell className="max-w-3xl">
       <PageHeader title="Prescription lookup" subtitle="Search a patient's name or a drug. You'll see prescriptions patients have chosen to share." />
+      <PharmacyNav />
 
       <div className="relative mb-2">
         <Icon name="search" className="pointer-events-none absolute left-3.5 top-1/2 h-5 w-5 -translate-y-1/2 text-gray-400" />
@@ -72,9 +68,8 @@ export default function PharmacyLookupPage() {
                   {p.purpose && <p className="text-sm text-gray-700">Overall reason: {p.purpose}</p>}
                   <PrescriptionItems items={p.items} />
                   {['issued', 'partially_dispensed'].includes(p.status) && (
-                    <div className="flex flex-wrap justify-end gap-2 border-t border-gray-100 pt-3">
-                      <Button variant="secondary" size="sm" onClick={() => setTarget({ rx: p, status: 'partially_dispensed' })}>Partly dispensed</Button>
-                      <Button variant="accent" size="sm" icon="check" onClick={() => setTarget({ rx: p, status: 'dispensed' })}>Dispense all</Button>
+                    <div className="flex justify-end border-t border-gray-100 pt-3">
+                      <Link to={`/pharmacy/attend/${p.id}?code=${encodeURIComponent(p.code)}`} className={primaryBtn}>Attend to this prescription</Link>
                     </div>
                   )}
                 </Card>
@@ -82,9 +77,6 @@ export default function PharmacyLookupPage() {
             ))}
           </ul>
         )}
-
-      <ConfirmSheet open={!!target} tone="primary" title="Record this dispensing?" confirmLabel="Yes, record it" busy={busy} onClose={() => setTarget(null)} onConfirm={dispense}
-        body={target && `Mark ${target.rx.code} as ${target.status.replace('_', ' ')}. The patient is notified.`} />
     </PageShell>
   );
 }

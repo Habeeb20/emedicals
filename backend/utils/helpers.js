@@ -1,7 +1,7 @@
 import {
   User, Organization, PatientProfile, DoctorProfile, StaffProfile,
   Appointment, MedicalRecord, Prescription, LabTest, LabOrder, Medicine,
-  MortuaryRecord, CemeteryPlot, BurialRecord, Review, Interaction,
+  MortuaryRecord, CemeteryPlot, BurialRecord,  
   Conversation, Message,
 } from '../models/index.js';
 

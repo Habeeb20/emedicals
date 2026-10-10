@@ -61,3 +61,24 @@ export const restrictTo = (...roles) => (req, res, next) => {
   }
   return next();
 };
+
+
+
+
+
+
+
+export const optionalAuth = async (req, _res, next) => {
+  try {
+    const header = req.headers.authorization || '';
+    const token = header.startsWith('Bearer ') ? header.slice(7) : req.cookies?.token;
+    if (!token) return next();
+
+    const { id } = jwt.verify(token, process.env.JWT_SECRET);
+    const user = await User.findById(id);
+    if (user?.isActive) req.user = user;
+  } catch {
+    // Expired or invalid token: treat the visitor as a guest instead of failing the request
+  }
+  next();
+};

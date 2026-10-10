@@ -12,7 +12,6 @@ export { default as Medicine } from './Medicine.js';
 export { default as MortuaryRecord } from './MortuaryRecord.js';
 export { default as CemeteryPlot } from './CemeteryPlot.js';
 export { default as BurialRecord } from './BurialRecord.js';
-export { default as Review } from './Review.js';
-export { default as Interaction } from './Interaction.js';
+
 export { default as Conversation } from './Conversation.js';
 export { default as Message } from './Message.js';

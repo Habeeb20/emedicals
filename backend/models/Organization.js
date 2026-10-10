@@ -27,6 +27,10 @@ paymentSettings: {
   depositAmount: { type: Number, default: 0 },
 },
     status: { type: String, enum: ['pending', 'approved', 'suspended'], default: 'pending' },
+    about: { type: String, maxlength: 1000 },
+openingHours: String,            // "Mon-Sat 8am-9pm"
+is24Hours: { type: Boolean, default: false },
+offersDelivery: { type: Boolean, default: false },
   },
   { timestamps: true }
 );
