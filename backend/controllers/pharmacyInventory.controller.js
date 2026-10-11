@@ -6,13 +6,20 @@ import {
   escapeRegex, positiveInt, nonNegInt, money, objectId, pick, withTx, audit,
 } from '../utils/pharmacy.js';
 import { moveStock } from '../services/stock.service.js';
-
+import { sameId } from '../utils/engagement.js';
 const DRUG_FIELDS = [
   'genericName', 'brandName', 'strength', 'form', 'route', 'packSize', 'unit', 'category',
   'manufacturer', 'barcode', 'nafdacNumber', 'schedule', 'coldChain', 'highAlert',
-  'sellingPrice', 'reorderLevel', 'maxStock', 'isActive',
+  'sellingPrice', 'reorderLevel', 'maxStock', 'isActive', "images"
 ];
 
+function cleanImages(v) {
+  if (!Array.isArray(v)) throw new HttpError(400, 'images must be an array of URLs');
+  const urls = [...new Set(v.map((u) => String(u || '').trim()).filter(Boolean))];
+  if (urls.length > 8) throw new HttpError(400, 'You can add at most 8 images');
+  if (urls.some((u) => !/^https:\/\/\S+$/i.test(u))) throw new HttpError(400, 'Each image must be a valid https URL');
+  return urls;
+}
 function validateDrug(d, partial = false) {
   if (!partial || d.genericName !== undefined) {
     if (!String(d.genericName || '').trim()) throw new HttpError(400, 'Generic name is required');
@@ -23,6 +30,7 @@ function validateDrug(d, partial = false) {
   if (d.reorderLevel !== undefined) d.reorderLevel = nonNegInt(d.reorderLevel, 'Reorder level');
   if (d.barcode !== undefined && !String(d.barcode).trim()) delete d.barcode;
   return d;
+    if (d.images !== undefined) d.images = cleanImages(d.images);
 }
 
 const dupGuard = (err) => {
@@ -74,7 +82,9 @@ export const listDrugs = handle(async (req, res) => {
 });
 
 export const createDrug = handle(async (req, res) => {
+    console.log(req.body)
   const body = validateDrug(pick(req.body, DRUG_FIELDS));
+  console.log(body)
   try {
     const drug = await Drug.create({ ...body, pharmacy: req.pharmacy._id });
     await audit(req, 'drug.create', 'Drug', drug._id, { name: drug.genericName });
@@ -292,7 +302,8 @@ export const updateSupplier = handle(async (req, res) => {
 /* ============================== ALERTS ============================= */
 
 export const getAlerts = handle(async (req, res) => {
-  const pharmacy = req.pharmacy._id;
+    try {
+          const pharmacy = req.pharmacy._id;
   const now = new Date();
   const soon = new Date(now.getTime() + 90 * 864e5);
   const [lowStock, expiring, expired] = await Promise.all([
@@ -304,4 +315,42 @@ export const getAlerts = handle(async (req, res) => {
       .populate('drug', 'genericName brandName strength').sort('expiryDate').limit(50).lean(),
   ]);
   res.json({ success: true, data: { lowStock, expiring, expired } });
+    } catch (error) {
+        console.log(error)
+    }
+
+});
+export const getDrug = handle(async (req, res) => {
+  objectId(req.params.id, 'drug id');
+  const drug = await Drug.findOne({ _id: req.params.id, pharmacy: req.pharmacy._id }).lean();
+  if (!drug) throw new HttpError(404, 'Drug not found');
+  res.json({ success: true, data: drug });
+});
+
+/**
+ * DELETE /pharmacy/drugs/:id   (manager)
+ * A drug with stock, stock history or sales is archived (isActive=false) so records stay intact.
+ * A drug that was never used is deleted for good.
+ */
+export const deleteDrug = handle(async (req, res) => {
+  objectId(req.params.id, 'drug id');
+  const drug = await Drug.findOne({ _id: req.params.id, pharmacy: req.pharmacy._id });
+  if (!drug) throw new HttpError(404, 'Drug not found');
+
+  const [hasMoves, hasSales] = await Promise.all([
+    StockMovement.exists({ drug: drug._id }),
+    Sale.exists({ 'items.drug': drug._id }),
+  ]);
+
+  if (hasMoves || hasSales || drug.stock > 0) {
+    drug.isActive = false;
+    await drug.save();
+    await audit(req, 'drug.archive', 'Drug', drug._id, { name: drug.genericName });
+    return res.json({ success: true, data: { archived: true } });
+  }
+
+  await Batch.deleteMany({ pharmacy: req.pharmacy._id, drug: drug._id });
+  await drug.deleteOne();
+  await audit(req, 'drug.delete', 'Drug', drug._id, { name: drug.genericName });
+  res.json({ success: true, data: { archived: false } });
 });

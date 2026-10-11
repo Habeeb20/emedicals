@@ -63,7 +63,7 @@ export default function PharmacySalesPage() {
 
   const load = useCallback(() => {
     const params = { page, limit: 20, from, to, ...(type ? { type } : {}), ...(dq.trim() ? { q: dq.trim() } : {}) };
-    api('/pharmacy/sales', { params }).then((r) => { setRows(r.data); setMeta(r.meta); setError(''); }).catch((e) => setError(e.message));
+    api('/pharmacy/sales', { params }).then((r) => { setRows(r.data?.data); setMeta(r.meta); setError(''); }).catch((e) => setError(e.message));
   }, [page, from, to, type, dq]);
   useEffect(() => { load(); }, [load]);
   useEffect(() => { setPage(1); }, [from, to, type, dq]);

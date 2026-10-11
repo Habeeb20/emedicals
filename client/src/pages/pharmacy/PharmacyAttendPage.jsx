@@ -7,10 +7,28 @@ import {
   DrugPicker, PaymentBox, PharmacyNav, Pill, Receipt, drugLabel, emptyPayment, fmtDate, ghostBtn, money, paymentBody, primaryBtn, usePharmacyMe,
 } from './PharmacyShared';
 
+
+// Make sure the pieces the page loops over are always the right shape,
+// whatever the API sends back.
+const normalizeRx = (raw) => {
+  // Accept { success, data: {...} }, { prescription: {...} }, or the prescription itself
+  const data = raw?.prescription ?? raw?.data ?? raw ?? {};
+  const items = Array.isArray(data.items) ? data.items : [];
+  return {
+    ...data,
+    items: items.map((it, i) => ({ ...it, index: i })), // position = index into suggestions[]
+    previous: Array.isArray(data.previous) ? data.previous : [],
+    suggestions: Array.isArray(data.suggestions) ? data.suggestions : [],
+  };
+};
 export default function PharmacyAttendPage() {
-  const { id } = useParams();
+
+// replace the useParams line and remove console.log(id)
   const [sp] = useSearchParams();
-  const code = sp.get('code') || '';
+const id = sp.get('id');
+const code = sp.get('code') || '';
+
+
   const me = usePharmacyMe();
 
   const [rx, setRx] = useState(null);
@@ -23,15 +41,38 @@ export default function PharmacyAttendPage() {
   const [history, setHistory] = useState([]);
 
   useEffect(() => {
+  if (!id) { setRx(null); setError('No prescription selected. Search for one first.'); return undefined; }
+
+  let cancelled = false;
+  setRx(null);
+  setError('');
+  // ...the rest of your effect is unchanged
+}, [id, code]);
+
+  useEffect(() => {
+    let cancelled = false;
+    setRx(null);
+    setError('');
+
     api(`/pharmacy/prescriptions/${id}`, { params: code ? { code } : {} })
       .then((r) => {
-        setRx(r.data);
-        if (r.data.patient?.id) {
-          api('/pharmacy/sales', { params: { patient: r.data.patient.id, limit: 5, from: '2000-01-01' } })
-            .then((h) => setHistory(h.data.filter((s) => s.prescription !== r.data.id))).catch(() => {});
+        if (cancelled) return;
+        const data = normalizeRx(r.data);
+        setRx(data);
+
+        if (data.patient?.id) {
+          api('/pharmacy/sales', { params: { patient: data.patient.id, limit: 5, from: '2000-01-01' } })
+            .then((h) => {
+              if (cancelled) return;
+              const sales = Array.isArray(h.data) ? h.data : [];
+              setHistory(sales.filter((s) => s.prescription !== data.id));
+            })
+            .catch(() => {});
         }
       })
-      .catch((e) => setError(e.message));
+      .catch((e) => { if (!cancelled) setError(e.message); });
+
+    return () => { cancelled = true; };
   }, [id, code]);
 
   const setLine = (idx, drug, qty) => setLines((l) => ({ ...l, [idx]: { drug, qty } }));
@@ -41,11 +82,19 @@ export default function PharmacyAttendPage() {
     () => Object.values(lines).reduce((s, l) => s + l.drug.sellingPrice * (Number(l.qty) || 0), 0),
     [lines]
   );
+
   const chosen = Object.entries(lines);
-  const allCovered = rx?.items.every((it) => it.remaining === 0 || lines[it.index]);
+  const items = rx?.items ?? [];
+
+  // True when every line is either fully given before, or has a product picked now
+  const allCovered =
+    items.length > 0 &&
+    items.every((it) => it.remaining === 0 || lines[it.index]);
+
   useEffect(() => { setFinalize(!!allCovered); }, [allCovered]);
 
   const maxFor = (it, drug) => Math.max(1, Math.min(it.remaining ?? 9999, drug.sellable ?? drug.stock));
+  const defaultQty = (it, drug) => Math.min(it.remaining ?? it.quantity ?? 1, drug.sellable ?? drug.stock) || 1;
 
   const submit = async () => {
     setBusy(true); setError('');
@@ -58,7 +107,7 @@ export default function PharmacyAttendPage() {
           ...paymentBody(pay),
         },
       });
-      setDone(r.data);
+      setDone(r.data); // r.data is the sale/receipt, not the prescription
     } catch (e) { setError(e.message); } finally { setBusy(false); }
   };
 
@@ -95,7 +144,8 @@ export default function PharmacyAttendPage() {
                 <h2 className="truncate font-semibold text-navy-900">{rx.patient?.name}</h2>
                 <p className="text-sm text-gray-600">{[ageFrom(rx.patient?.dateOfBirth) && `${ageFrom(rx.patient.dateOfBirth)} yrs`, rx.patient?.gender].filter(Boolean).join(', ')}</p>
               </div>
-              <Pill tone={rx.status === 'dispensed' ? 'success' : rx.status === 'issued' ? 'warning' : 'gray'}>{rx.status.replace('_', ' ')}</Pill>
+
+              <Pill tone={rx.status === 'dispensed' ? 'success' : rx.status === 'issued' ? 'warning' : 'gray'}>{rx.status?.replace('_', ' ')}</Pill>
             </div>
             <dl className="grid gap-x-6 gap-y-1 text-sm sm:grid-cols-2">
               <div><dt className="text-gray-500">Prescribed by</dt><dd className="font-medium text-navy-900">{rx.prescribedBy || 'Unknown'}</dd></div>
@@ -115,8 +165,12 @@ export default function PharmacyAttendPage() {
             <EmptyState icon="check" title={`This prescription is ${rx.status}`} body="Nothing more can be dispensed against it." />
           ) : (
             <>
+              {items.length === 0 && (
+                <EmptyState icon="search" title="No medicines on this prescription" body="The prescription loaded, but it has no medicine lines. Ask the prescriber to check it." />
+              )}
+
               <ul className="space-y-4">
-                {rx.items.map((it) => {
+                {items.map((it) => {
                   const line = lines[it.index];
                   const sugg = rx.suggestions[it.index] || [];
                   return (
@@ -147,7 +201,11 @@ export default function PharmacyAttendPage() {
                               <label className="text-sm text-gray-700" htmlFor={`qty-${it.index}`}>Quantity</label>
                               <input
                                 id={`qty-${it.index}`} type="number" min="1" max={maxFor(it, line.drug)} value={line.qty}
-                                onChange={(e) => setLine(it.index, line.drug, Math.min(Number(e.target.value) || '', maxFor(it, line.drug)))}
+                                onChange={(e) => {
+                                  // Allow an empty box while typing; cap at what can be given
+                                  const v = e.target.value === '' ? '' : Math.min(Number(e.target.value), maxFor(it, line.drug));
+                                  setLine(it.index, line.drug, v);
+                                }}
                                 className="h-11 w-24 rounded-xl border border-gray-300 bg-white px-3 text-center focus:border-pharmacy-500 focus:outline-none focus:ring-2 focus:ring-pharmacy-500/30"
                               />
                               <span className="ml-auto font-semibold text-pharmacy-700">{money(line.drug.sellingPrice * (Number(line.qty) || 0))}</span>
@@ -160,16 +218,16 @@ export default function PharmacyAttendPage() {
                                 <p className="mb-2 text-xs text-gray-600">In your stock. Check strength and form before choosing.</p>
                                 <div className="flex flex-wrap gap-2">
                                   {sugg.map((d) => (
-                                    <button key={d._id} type="button" onClick={() => setLine(it.index, d, Math.min(it.remaining ?? it.quantity ?? 1, d.stock) || 1)}
+                                    <button key={d._id} type="button" onClick={() => setLine(it.index, d, defaultQty(it, d))}
                                       className="rounded-xl bg-white px-3 py-2 text-left text-sm ring-1 ring-gray-200 hover:bg-pharmacy-50">
                                       <span className="block font-medium text-navy-900">{drugLabel(d)}</span>
-                                      <span className="text-xs text-gray-500">{money(d.sellingPrice)} · {d.stock} in stock</span>
+                                      <span className="text-xs text-gray-500">{money(d.sellingPrice)} · {d.sellable ?? d.stock} in stock</span>
                                     </button>
                                   ))}
                                 </div>
                               </div>
                             )}
-                            <DrugPicker placeholder={sugg.length ? 'Or search for another product' : 'Search your stock for this drug'} onPick={(d) => setLine(it.index, d, Math.min(it.remaining ?? it.quantity ?? 1, d.sellable ?? d.stock) || 1)} />
+                            <DrugPicker placeholder={sugg.length ? 'Or search for another product' : 'Search your stock for this drug'} onPick={(d) => setLine(it.index, d, defaultQty(it, d))} />
                             {sugg.length === 0 && <p className="text-xs text-gray-500">No obvious match in stock. Search by brand or generic name.</p>}
                           </div>
                         ))}
@@ -184,7 +242,10 @@ export default function PharmacyAttendPage() {
                   <h3 className="mb-2 font-semibold text-navy-900">Earlier visits to your pharmacy</h3>
                   <ul className="divide-y divide-gray-100 text-sm">
                     {history.map((s) => (
-                      <li key={s._id} className="flex justify-between gap-3 py-2"><span className="text-gray-700">{fmtDate(s.createdAt)} · {s.items.map((i) => i.name).join(', ')}</span><span className="shrink-0 font-medium">{money(s.total)}</span></li>
+                      <li key={s._id} className="flex justify-between gap-3 py-2">
+                        <span className="text-gray-700">{fmtDate(s.createdAt)} · {(s.items ?? []).map((i) => i.name).join(', ')}</span>
+                        <span className="shrink-0 font-medium">{money(s.total)}</span>
+                      </li>
                     ))}
                   </ul>
                 </Card>

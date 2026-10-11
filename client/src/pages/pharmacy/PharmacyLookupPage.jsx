@@ -6,7 +6,7 @@ import { useDebounced } from '../appointments/hooks';
 import { Avatar, Badge, Card, EmptyState, ErrorNote, Icon, inputCls, PageHeader, PageShell, Skeleton } from '../appointments/ui';
 import PrescriptionsPage from '../appointments/PrescriptionsPage';
 import { ageFrom } from '../appointments/format';
-
+import { PrescriptionItems } from '../appointments/PrescriptionsPage';
 import { PharmacyNav, primaryBtn } from './PharmacyShared';
 
 // Searching is unchanged. Dispensing now happens on the Attend page, which picks the exact
@@ -19,12 +19,19 @@ export default function PharmacyLookupPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
+  // Opens the Attend tab inside the dashboard, carrying the id and code with it
+const attendUrl = (p) => {
+  const qs = new URLSearchParams({ tab: 'pharmacy-attend', id: String(p.id || p._id) });
+  if (p.code) qs.set('code', p.code);
+  return `/dashboard?${qs.toString()}`;
+};
+
   useEffect(() => {
     if (dq.trim().length < 2) { setResults(null); setError(''); return undefined; }
     let off = false;
     setLoading(true);
     api('/prescriptions/search', { params: { q: dq.trim() } })
-      .then((r) => { if (!off) { setResults(r.data); setVia(r.meta.via); setError(''); } })
+      .then((r) => { if (!off) { setResults(r.data?.data); setVia(r.meta); setError(''); } })
       .catch((e) => !off && setError(e.message))
       .finally(() => !off && setLoading(false));
     return () => { off = true; };
@@ -69,7 +76,7 @@ export default function PharmacyLookupPage() {
                   <PrescriptionItems items={p.items} />
                   {['issued', 'partially_dispensed'].includes(p.status) && (
                     <div className="flex justify-end border-t border-gray-100 pt-3">
-                      <Link to={`/pharmacy/attend/${p.id}?code=${encodeURIComponent(p.code)}`} className={primaryBtn}>Attend to this prescription</Link>
+                  <Link to={attendUrl(p)} className={primaryBtn}>Attend to this prescription</Link>
                     </div>
                   )}
                 </Card>

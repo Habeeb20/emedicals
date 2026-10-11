@@ -41,6 +41,8 @@ router.get('/pharmacy/alerts', staff, inv.getAlerts);
 
 // Catalog + stock (everyone can read; only the manager can change)
 router.get('/pharmacy/drugs', staff, inv.listDrugs);
+router.get('/drugs/:id', inv.getDrug);
+router.delete('/drugs/:id', requireManager, inv.deleteDrug); // use your actual manager middleware
 router.post('/pharmacy/drugs', manager, inv.createDrug);
 router.patch('/pharmacy/drugs/:id', manager, inv.updateDrug);
 router.get('/pharmacy/drugs/:id/batches', staff, inv.listBatches);

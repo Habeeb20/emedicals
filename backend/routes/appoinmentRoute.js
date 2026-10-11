@@ -36,7 +36,8 @@ router.patch('/appointments/:id/status', verifyToken, provider, appts.updateStat
 // prescriptions
 router.get('/prescriptions/mine', verifyToken, patient, rx.myPrescriptions);
 router.patch('/prescriptions/visibility', verifyToken, patient, rx.setVisibility);
-router.get('/prescriptions/search', verifyToken, restrictTo('pharmacist'), rx.searchPrescriptions);
+router.get('/prescriptions/search',  rx.searchPrescriptions);
+// router.get('/prescriptions/search', verifyToken, restrictTo('pharmacist'), rx.searchPrescriptions);
 router.patch('/prescriptions/:id/dispense', verifyToken, restrictTo('pharmacist'), rx.dispense);
 
 // quick chat

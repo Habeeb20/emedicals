@@ -35,7 +35,7 @@ export default function OrganizationsTab({ notify, onChanged, lockedStatus }) {
   ];
 
   const actions = (o) => {
-    const p = `/organizations/${o._id}`;
+    const p = `super-admin/organizations/${o._id}`;
     const put = (a, c) => () => run(`${p}/${a}`, { method: 'PUT' }, c);
     if (o.status === 'pending') return <Button variant="success" onClick={put('approve')}>Approve</Button>;
     if (o.status === 'approved') return <Button variant="warning" onClick={put('suspend', `Suspend ${o.name}?`)}>Suspend</Button>;

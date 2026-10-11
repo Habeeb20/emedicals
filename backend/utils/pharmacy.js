@@ -2,7 +2,7 @@ import mongoose from 'mongoose';
 import { HttpError } from './engagement.js';
 import { AuditLog } from '../models/Pharmacy.js';
 import Organization from '../models/Organization.js';
-
+import { sameId } from './engagement.js';
 
 // Express middleware wrapper (async errors go to your error handler)
 export const wrap = (fn) => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);

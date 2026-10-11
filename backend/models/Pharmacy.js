@@ -36,6 +36,8 @@ const drugSchema = new Schema(
     maxStock: { type: Number, min: 0 },
     // Denormalised on-hand total (all batches, expired included). The ledger is the source of truth.
     stock: { type: Number, default: 0, min: 0 },
+
+        images: { type: [String], default: [] },   // Cloudinary secure URLs
     isActive: { type: Boolean, default: true },
   },
   { timestamps: true }

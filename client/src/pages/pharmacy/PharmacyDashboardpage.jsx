@@ -13,7 +13,7 @@ export default function PharmacyDashboardPage() {
 
   useEffect(() => {
     Promise.all([api('/pharmacy/dashboard'), api('/pharmacy/alerts')])
-      .then(([s, a]) => { setStats(s.data); setAlerts(a.data); })
+      .then(([s, a]) => { setStats(s.data); setAlerts(a.data?.data); })
       .catch((e) => setError(e.message));
   }, []);
 

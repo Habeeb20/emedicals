@@ -19,7 +19,8 @@ export const getMe = handle(async (req, res) => {
 
 /** GET /pharmacy/dashboard */
 export const getDashboard = handle(async (req, res) => {
-  const pharmacy = req.pharmacy._id;
+    try {
+        const pharmacy = req.pharmacy._id;
   const start = new Date();
   start.setUTCHours(0, 0, 0, 0);
   const now = new Date();
@@ -45,6 +46,10 @@ export const getDashboard = handle(async (req, res) => {
       lowStock, expiring, expired,
     },
   });
+    } catch (error) {
+        console.log(error)
+    }
+  
 });
 
 /** GET /pharmacy/reports/summary?from=&to=   (manager) */
