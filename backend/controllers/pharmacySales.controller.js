@@ -227,7 +227,8 @@ export const listSales = handle(async (req, res) => {
   const { page, limit, skip } = parsePagination(req.query, 100);
   const { from, to } = dateRange(req.query);
   const filter = { pharmacy: req.pharmacy._id, createdAt: { $gte: from, $lte: to } };
-  if (['prescription', 'walk_in'].includes(req.query.type)) filter.type = req.query.type;
+   if (['prescription', 'walk_in', 'online'].includes(req.query.type)) filter.type = req.query.type;
+
   if (req.query.patient) filter.patient = objectId(req.query.patient, 'patient id');
   const q = String(req.query.q || '').trim();
   if (q) {

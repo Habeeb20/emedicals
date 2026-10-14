@@ -5,14 +5,26 @@ import { Toaster } from 'sonner';
 import App from './App.jsx';
 import { AuthProvider } from './context/AuthContext.jsx';
 import './index.css';
-
+import { CartProvider } from './pages/pharmacy/shop/cart.jsx';
 ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>
     <BrowserRouter>
       <AuthProvider>
+              <CartProvider>
         <App />
         <Toaster position="top-right" richColors closeButton />
+              </CartProvider>
+
       </AuthProvider>
     </BrowserRouter>
   </React.StrictMode>
 );
+
+
+
+
+
+
+
+
+

@@ -4,6 +4,7 @@ import { useDebounced } from '../appointments/hooks';
 
 import { Card, EmptyState, ErrorNote, PageHeader, PageShell, Skeleton } from  '../appointments/ui';
 import {
+  DownloadReceiptButton,
   Field, PharmacyNav, Pill, Receipt, Sheet, field, fmtDate, ghostBtn, money, primaryBtn, usePharmacyMe,
 } from './PharmacyShared';
 
@@ -69,7 +70,7 @@ export default function PharmacySalesPage() {
   useEffect(() => { setPage(1); }, [from, to, type, dq]);
 
   const view = async (id) => {
-    try { const r = await api(`/pharmacy/sales/${id}`); setOpen(r.data); } catch (e) { setError(e.message); }
+    try { const r = await api(`/pharmacy/sales/${id}`);   setOpen(r.data?.data ?? r.data); } catch (e) { setError(e.message); }
   };
 
   return (
@@ -106,7 +107,9 @@ export default function PharmacySalesPage() {
                       <div className="shrink-0 text-right">
                         <p className="font-semibold text-navy-900">{money(s.total)}</p>
                         <div className="mt-1 flex flex-wrap justify-end gap-1">
-                          <Pill tone={s.type === 'prescription' ? 'pharmacy' : 'gray'}>{s.type === 'prescription' ? 'Rx' : 'Walk-in'}</Pill>
+<Pill tone={s.type === 'walk_in' ? 'gray' : 'pharmacy'}>
+  {s.type === 'prescription' ? 'Rx' : s.type === 'online' ? 'Online' : 'Walk-in'}
+</Pill>
                           {s.status !== 'completed' && <Pill tone="warning">{s.status.replace('_', ' ')}</Pill>}
                           {['partial', 'unpaid', 'claim_pending'].includes(s.paymentStatus) && <Pill tone="info">{s.paymentStatus.replace('_', ' ')}</Pill>}
                         </div>
@@ -133,7 +136,12 @@ export default function PharmacySalesPage() {
             <Receipt sale={open} pharmacyName={me?.pharmacy?.name} />
             {open.prescription?.code && <p className="mt-3 text-center text-xs text-gray-600">Prescription {open.prescription.code}</p>}
             {open.paymentMethod === 'insurance' && <p className="mt-1 text-center text-xs text-gray-600">HMO: {open.insurer}{open.authCode ? ` · auth ${open.authCode}` : ''}</p>}
-            <div className="mt-4 flex justify-center"><button type="button" onClick={() => window.print()} className={ghostBtn}>Print</button></div>
+            <div className="mt-4 flex justify-center gap-2">
+  <button type="button" onClick={() => window.print()} className={ghostBtn}>Print</button>
+  <DownloadReceiptButton sale={open} />
+</div>
+      
+
             {me?.isManager && open.status !== 'refunded' && <ReturnForm sale={open} onDone={() => { setOpen(null); load(); }} />}
           </>
         )}

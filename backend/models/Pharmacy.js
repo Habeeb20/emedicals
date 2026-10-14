@@ -36,6 +36,7 @@ const drugSchema = new Schema(
     maxStock: { type: Number, min: 0 },
     // Denormalised on-hand total (all batches, expired included). The ledger is the source of truth.
     stock: { type: Number, default: 0, min: 0 },
+    lastReceivedAt: Date, // set when stock is first/last received
 
         images: { type: [String], default: [] },   // Cloudinary secure URLs
     isActive: { type: Boolean, default: true },
@@ -181,7 +182,8 @@ const saleSchema = new Schema(
   {
     pharmacy: oid('Organization', { required: true, index: true }),
     receiptNo: { type: String, unique: true },
-    type: { type: String, enum: ['prescription', 'walk_in'], required: true },
+    type: { type: String, enum: ['prescription', 'walk_in', 'online'], required: true },
+
     prescription: oid('Prescription'),
     patient: oid('User', { index: true }),
     customerName: String,

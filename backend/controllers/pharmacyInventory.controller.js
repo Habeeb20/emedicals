@@ -1,17 +1,19 @@
 import {
-  Drug, Batch, StockMovement, Supplier, GoodsReceipt, DRUG_FORMS, SCHEDULES,
+  Drug, Batch, StockMovement, Supplier, GoodsReceipt, Sale, DRUG_FORMS, SCHEDULES,
 } from '../models/Pharmacy.js';
 import { HttpError, handle, parsePagination } from '../utils/engagement.js';
 import {
   escapeRegex, positiveInt, nonNegInt, money, objectId, pick, withTx, audit,
 } from '../utils/pharmacy.js';
 import { moveStock } from '../services/stock.service.js';
-import { sameId } from '../utils/engagement.js';
+
 const DRUG_FIELDS = [
   'genericName', 'brandName', 'strength', 'form', 'route', 'packSize', 'unit', 'category',
   'manufacturer', 'barcode', 'nafdacNumber', 'schedule', 'coldChain', 'highAlert',
-  'sellingPrice', 'reorderLevel', 'maxStock', 'isActive', "images"
+  'sellingPrice', 'reorderLevel', 'maxStock', 'isActive', 'images',
 ];
+// NOTE: 'stock' and 'lastReceivedAt' are deliberately NOT in DRUG_FIELDS.
+// Stock only changes through receipts, sales, adjustments and quarantine.
 
 function cleanImages(v) {
   if (!Array.isArray(v)) throw new HttpError(400, 'images must be an array of URLs');
@@ -20,17 +22,31 @@ function cleanImages(v) {
   if (urls.some((u) => !/^https:\/\/\S+$/i.test(u))) throw new HttpError(400, 'Each image must be a valid https URL');
   return urls;
 }
+
 function validateDrug(d, partial = false) {
   if (!partial || d.genericName !== undefined) {
     if (!String(d.genericName || '').trim()) throw new HttpError(400, 'Generic name is required');
+    d.genericName = String(d.genericName).trim();
   }
   if (!partial || d.sellingPrice !== undefined) d.sellingPrice = money(d.sellingPrice, 'Selling price');
   if (d.form !== undefined && !DRUG_FORMS.includes(d.form)) throw new HttpError(400, 'Invalid dosage form');
   if (d.schedule !== undefined && !SCHEDULES.includes(d.schedule)) throw new HttpError(400, 'Invalid drug class');
   if (d.reorderLevel !== undefined) d.reorderLevel = nonNegInt(d.reorderLevel, 'Reorder level');
+
+  // optional numeric: blank means "no limit"
+  if (d.maxStock !== undefined) {
+    if (d.maxStock === '' || d.maxStock === null) delete d.maxStock;
+    else d.maxStock = nonNegInt(d.maxStock, 'Max stock');
+  }
+
+  // blank values should fall back to the schema defaults instead of saving ''
   if (d.barcode !== undefined && !String(d.barcode).trim()) delete d.barcode;
+  if (d.unit !== undefined && !String(d.unit).trim()) delete d.unit;
+
+  // (this used to sit after `return d`, so images were never validated)
+  if (d.images !== undefined) d.images = cleanImages(d.images);
+
   return d;
-    if (d.images !== undefined) d.images = cleanImages(d.images);
 }
 
 const dupGuard = (err) => {
@@ -49,8 +65,16 @@ export const listDrugs = handle(async (req, res) => {
     const rx = new RegExp(escapeRegex(q), 'i');
     filter.$or = [{ genericName: rx }, { brandName: rx }, { barcode: q }];
   }
-  if (req.query.stock === 'out') filter.stock = 0;
-  if (req.query.stock === 'low') filter.$expr = { $lte: ['$stock', '$reorderLevel'] };
+
+  // out  = was received before, now at zero
+  // new  = created but never received (not "out of stock")
+  // low  = at or under the reorder level, but only drugs that have been stocked
+  if (req.query.stock === 'out') { filter.stock = 0; filter.lastReceivedAt = { $exists: true }; }
+  if (req.query.stock === 'new') { filter.stock = 0; filter.lastReceivedAt = { $exists: false }; }
+  if (req.query.stock === 'low') {
+    filter.$expr = { $lte: ['$stock', '$reorderLevel'] };
+    filter.lastReceivedAt = { $exists: true };
+  }
   if (req.query.inStock) filter.stock = { $gt: 0 };
 
   const [drugs, total] = await Promise.all([
@@ -82,11 +106,17 @@ export const listDrugs = handle(async (req, res) => {
 });
 
 export const createDrug = handle(async (req, res) => {
-    console.log(req.body)
   const body = validateDrug(pick(req.body, DRUG_FIELDS));
-  console.log(body)
+
   try {
-    const drug = await Drug.create({ ...body, pharmacy: req.pharmacy._id });
+    // A new drug always starts empty and "never stocked" (no lastReceivedAt).
+    // Stock is added later through receiveStock.
+    const drug = await Drug.create({
+      ...body,
+      pharmacy: req.pharmacy._id,
+      stock: 0,
+      images: body.images ?? [],
+    });
     await audit(req, 'drug.create', 'Drug', drug._id, { name: drug.genericName });
     res.status(201).json({ success: true, data: drug });
   } catch (err) { dupGuard(err); }
@@ -104,6 +134,13 @@ export const updateDrug = handle(async (req, res) => {
     }
     res.json({ success: true, data: drug });
   } catch (err) { dupGuard(err); }
+});
+
+export const getDrug = handle(async (req, res) => {
+  objectId(req.params.id, 'drug id');
+  const drug = await Drug.findOne({ _id: req.params.id, pharmacy: req.pharmacy._id }).lean();
+  if (!drug) throw new HttpError(404, 'Drug not found');
+  res.json({ success: true, data: drug });
 });
 
 export const listBatches = handle(async (req, res) => {
@@ -125,12 +162,41 @@ export const listMovements = handle(async (req, res) => {
   res.json({ success: true, data: items, meta: { page, limit, total, pages: Math.ceil(total / limit) } });
 });
 
+/**
+ * DELETE /pharmacy/drugs/:id   (manager)
+ * A drug with stock, stock history or sales is archived (isActive=false) so records stay intact.
+ * A drug that was never used is deleted for good.
+ */
+export const deleteDrug = handle(async (req, res) => {
+  objectId(req.params.id, 'drug id');
+  const drug = await Drug.findOne({ _id: req.params.id, pharmacy: req.pharmacy._id });
+  if (!drug) throw new HttpError(404, 'Drug not found');
+
+  const [hasMoves, hasSales] = await Promise.all([
+    StockMovement.exists({ drug: drug._id }),
+    Sale.exists({ 'items.drug': drug._id }), // Sale is now imported (it was missing before)
+  ]);
+
+  if (hasMoves || hasSales || drug.stock > 0) {
+    drug.isActive = false;
+    await drug.save();
+    await audit(req, 'drug.archive', 'Drug', drug._id, { name: drug.genericName });
+    return res.json({ success: true, data: { archived: true } });
+  }
+
+  await Batch.deleteMany({ pharmacy: req.pharmacy._id, drug: drug._id });
+  await drug.deleteOne();
+  await audit(req, 'drug.delete', 'Drug', drug._id, { name: drug.genericName });
+  res.json({ success: true, data: { archived: false } });
+});
+
 /* ============================ RECEIVING ============================ */
 
 /**
  * POST /pharmacy/receipts   (manager)
  * body: { supplierId?, invoiceNo?, notes?, items: [{ drugId, batchNo, expiryDate, quantity, costPrice }] }
  * Adds stock by batch. Receiving an existing batch number adds to that batch.
+ * Stamps Drug.lastReceivedAt so the drug counts as "stocked" from now on.
  */
 export const receiveStock = handle(async (req, res) => {
   const { supplierId, invoiceNo, notes, items } = req.body || {};
@@ -172,11 +238,17 @@ export const receiveStock = handle(async (req, res) => {
         },
         { upsert: true, new: true, session }
       );
+      // moveStock writes the ledger row and updates Drug.stock
       await moveStock({
         session, pharmacy: req.pharmacy._id, drug: drug._id, batch: batch._id, delta: l.quantity,
         type: 'receipt', unitCost: l.costPrice, reason: invoiceNo ? `Invoice ${invoiceNo}` : 'Stock received', by: req.user._id,
       });
-      await Drug.updateOne({ _id: drug._id }, { $set: { costPrice: l.costPrice } }, { session });
+      // lastReceivedAt is what separates "never stocked" from "sold out"
+      await Drug.updateOne(
+        { _id: drug._id },
+        { $set: { costPrice: l.costPrice, lastReceivedAt: new Date() } },
+        { session }
+      );
       totalCost += l.quantity * l.costPrice;
       done.push({ drug: drug._id, name: drug.genericName, batchNo: l.batchNo, expiryDate: l.expiryDate, quantity: l.quantity, costPrice: l.costPrice });
     }
@@ -302,12 +374,14 @@ export const updateSupplier = handle(async (req, res) => {
 /* ============================== ALERTS ============================= */
 
 export const getAlerts = handle(async (req, res) => {
-    try {
-          const pharmacy = req.pharmacy._id;
+  // The old try/catch logged the error but never sent a response, so the request hung.
+  // `handle` already catches errors and returns them properly.
+  const pharmacy = req.pharmacy._id;
   const now = new Date();
   const soon = new Date(now.getTime() + 90 * 864e5);
   const [lowStock, expiring, expired] = await Promise.all([
-    Drug.find({ pharmacy, isActive: true, $expr: { $lte: ['$stock', '$reorderLevel'] } })
+    // lastReceivedAt filter: drugs that were never stocked are not "low stock"
+    Drug.find({ pharmacy, isActive: true, lastReceivedAt: { $exists: true }, $expr: { $lte: ['$stock', '$reorderLevel'] } })
       .select('genericName brandName strength stock reorderLevel').sort('stock').limit(50).lean(),
     Batch.find({ pharmacy, quantity: { $gt: 0 }, expiryDate: { $gt: now, $lte: soon } })
       .populate('drug', 'genericName brandName strength').sort('expiryDate').limit(50).lean(),
@@ -315,42 +389,4 @@ export const getAlerts = handle(async (req, res) => {
       .populate('drug', 'genericName brandName strength').sort('expiryDate').limit(50).lean(),
   ]);
   res.json({ success: true, data: { lowStock, expiring, expired } });
-    } catch (error) {
-        console.log(error)
-    }
-
-});
-export const getDrug = handle(async (req, res) => {
-  objectId(req.params.id, 'drug id');
-  const drug = await Drug.findOne({ _id: req.params.id, pharmacy: req.pharmacy._id }).lean();
-  if (!drug) throw new HttpError(404, 'Drug not found');
-  res.json({ success: true, data: drug });
-});
-
-/**
- * DELETE /pharmacy/drugs/:id   (manager)
- * A drug with stock, stock history or sales is archived (isActive=false) so records stay intact.
- * A drug that was never used is deleted for good.
- */
-export const deleteDrug = handle(async (req, res) => {
-  objectId(req.params.id, 'drug id');
-  const drug = await Drug.findOne({ _id: req.params.id, pharmacy: req.pharmacy._id });
-  if (!drug) throw new HttpError(404, 'Drug not found');
-
-  const [hasMoves, hasSales] = await Promise.all([
-    StockMovement.exists({ drug: drug._id }),
-    Sale.exists({ 'items.drug': drug._id }),
-  ]);
-
-  if (hasMoves || hasSales || drug.stock > 0) {
-    drug.isActive = false;
-    await drug.save();
-    await audit(req, 'drug.archive', 'Drug', drug._id, { name: drug.genericName });
-    return res.json({ success: true, data: { archived: true } });
-  }
-
-  await Batch.deleteMany({ pharmacy: req.pharmacy._id, drug: drug._id });
-  await drug.deleteOne();
-  await audit(req, 'drug.delete', 'Drug', drug._id, { name: drug.genericName });
-  res.json({ success: true, data: { archived: false } });
 });

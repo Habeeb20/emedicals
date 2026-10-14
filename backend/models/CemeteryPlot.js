@@ -9,6 +9,7 @@ const cemeteryPlotSchema = new mongoose.Schema(
     price: Number,
     status: { type: String, enum: ['available', 'reserved', 'occupied'], default: 'available', index: true },
     reservedBy: { name: String, phone: String },
+    booking: { type: mongoose.Schema.Types.ObjectId, ref: 'MemorialBooking' },
   },
   { timestamps: true }
 );

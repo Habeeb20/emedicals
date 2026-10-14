@@ -26,6 +26,15 @@ paymentSettings: {
   appointmentFee: { type: Number, default: 0 },
   depositAmount: { type: Number, default: 0 },
 },
+
+memorial: {
+  capacity: { type: Number, default: 0 },              // mortuary storage slots
+  storageRatePerDay: { type: Number, default: 0 },
+  bookingsOpen: { type: Boolean, default: true },
+  cancellationPolicy: { type: String, maxlength: 600 },
+  amenities: [{ type: String, trim: true }],
+  services: [{ name: String, description: String, price: { type: Number, default: 0 } }],
+},
     status: { type: String, enum: ['pending', 'approved', 'suspended'], default: 'pending' },
     about: { type: String, maxlength: 1000 },
 openingHours: String,            // "Mon-Sat 8am-9pm"

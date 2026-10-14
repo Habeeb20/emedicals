@@ -13,7 +13,7 @@ import * as reports from '../controllers/pharmacyreports.controller.js';
 import * as pub from '../controllers/pharmacypublic.controller.js';
 import * as plans from '../controllers/chatPlan.controller.js';
 import * as chat from '../controllers/pharmacyChat.controller.js';
-
+import * as orders from '../controllers/pharmacyOrder.controller.js';
 const router = Router();
 
 /* ---------------- Public: find a pharmacy ---------------- */
@@ -38,13 +38,14 @@ const manager = [verifyToken, pharmacyStaff, requireManager];
 router.get('/pharmacy/me', staff, reports.getMe);
 router.get('/pharmacy/dashboard', staff, reports.getDashboard);
 router.get('/pharmacy/alerts', staff, inv.getAlerts);
-
+router.get('/pharmacy/drugs/:id', staff, inv.getDrug);
+router.delete('/pharmacy/drugs/:id', manager, inv.deleteDrug);
 // Catalog + stock (everyone can read; only the manager can change)
 router.get('/pharmacy/drugs', staff, inv.listDrugs);
-router.get('/drugs/:id', inv.getDrug);
+// router.get('/drugs/:id', inv.getDrug);
 router.delete('/drugs/:id', requireManager, inv.deleteDrug); // use your actual manager middleware
 router.post('/pharmacy/drugs', manager, inv.createDrug);
-router.patch('/pharmacy/drugs/:id', manager, inv.updateDrug);
+router.put('/pharmacy/drugs/:id', manager, inv.updateDrug);
 router.get('/pharmacy/drugs/:id/batches', staff, inv.listBatches);
 router.get('/pharmacy/drugs/:id/movements', staff, inv.listMovements);
 router.post('/pharmacy/receipts', manager, inv.receiveStock);
@@ -53,7 +54,7 @@ router.post('/pharmacy/adjustments', manager, inv.adjustStock);
 router.post('/pharmacy/batches/:id/quarantine', manager, inv.resolveQuarantine);
 router.get('/pharmacy/suppliers', staff, inv.listSuppliers);
 router.post('/pharmacy/suppliers', manager, inv.createSupplier);
-router.patch('/pharmacy/suppliers/:id', manager, inv.updateSupplier);
+router.put('/pharmacy/suppliers/:id', manager, inv.updateSupplier);
 
 // Attending patients and selling
 router.get('/pharmacy/prescriptions/:id', staff, sales.getPrescription);
@@ -66,6 +67,16 @@ router.post('/pharmacy/sales/:id/return', manager, sales.returnSale);
 router.get('/pharmacy/reports/summary', manager, reports.getSummary);
 router.get('/pharmacy/reports/valuation', manager, reports.getValuation);
 router.get('/pharmacy/reports/controlled', manager, reports.getControlledRegister);
+
+
+
+
+ 
+router.get('/pharmacy/orders', staff, orders.listOrders);
+router.post('/pharmacy/orders/:id/status', staff, orders.setStatus);
+router.post('/pharmacy/orders/:id/verify', staff, orders.verifyCode);
+router.post('/pharmacy/orders/:id/reject', staff, orders.rejectOrder);
+ 
 
 export default router;
 
@@ -122,3 +133,33 @@ export const webhookRouter = Router().post(
   express.raw({ type: 'application/json' }),
  chatPlanpaystackWebhook
 );
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

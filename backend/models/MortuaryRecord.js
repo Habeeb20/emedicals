@@ -25,6 +25,7 @@ const mortuaryRecordSchema = new mongoose.Schema(
     charges: { type: Number, default: 0 },
     paymentStatus: { type: String, enum: ['unpaid', 'part_paid', 'paid'], default: 'unpaid' },
     handledBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+    booking: { type: mongoose.Schema.Types.ObjectId, ref: 'MemorialBooking' },
   },
   { timestamps: true }
 );

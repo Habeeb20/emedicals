@@ -99,6 +99,8 @@ export function PharmacyNav() {
     { to: '/pharmacy/inventory', label: 'Inventory' },
     { to: '/pharmacy/sales', label: 'Sales' },
     { to: '/pharmacy/chats', label: 'Chats' },
+    { to: '/pharmacy/add-drugs', label: 'Add drugs' },
+
     { to: '/pharmacy/reports', label: 'Reports', manager: true },
   ].filter((l) => !l.manager || me?.isManager);
   return (
@@ -134,7 +136,7 @@ export function DrugPicker({ onPick, inStock = true, placeholder = 'Search drug 
     let off = false;
     setBusy(true);
     api('/pharmacy/drugs', { params: params(dq.trim()) })
-      .then((r) => !off && setResults(r.data))
+      .then((r) => !off && setResults(r.data?.data))
       .catch(() => {})
       .finally(() => !off && setBusy(false));
     return () => { off = true; };
@@ -229,32 +231,80 @@ export const paymentBody = (p) => ({
   authCode: p.authCode || undefined,
 });
 
+
 /* Printable receipt */
 export function Receipt({ sale, pharmacyName }) {
+  const customer = sale.patient?.fullName || sale.customerName || 'Walk-in customer';
+  const typeLabel = sale.type === 'prescription' ? 'Prescription' : sale.type === 'online' ? 'Online order' : 'Walk-in';
+
   return (
-    <div className="mx-auto w-full max-w-sm rounded-2xl bg-white p-5 text-sm ring-1 ring-gray-200 print:ring-0">
+
+    <div id="receipt-card" className="mx-auto w-full max-w-sm rounded-2xl bg-white p-5 text-sm ring-1 ring-gray-200 print:ring-0">
       <div className="text-center">
         <h3 className="text-base font-bold text-navy-900">{pharmacyName || 'Pharmacy'}</h3>
         <p className="font-mono text-xs text-gray-600">{sale.receiptNo}</p>
         <p className="text-xs text-gray-500">{fmtDate(sale.createdAt, true)}</p>
       </div>
+
+      <dl className="mt-4 space-y-1 rounded-xl bg-gray-50 p-3 text-xs">
+        <div className="flex justify-between gap-3"><dt className="text-gray-600">Customer</dt><dd className="font-medium text-navy-900">{customer}</dd></div>
+        {sale.customerPhone && <div className="flex justify-between gap-3"><dt className="text-gray-600">Phone</dt><dd>{sale.customerPhone}</dd></div>}
+        <div className="flex justify-between gap-3"><dt className="text-gray-600">Type</dt><dd>{typeLabel}</dd></div>
+        {sale.notes && <div className="flex justify-between gap-3"><dt className="text-gray-600">Note</dt><dd className="text-right">{sale.notes}</dd></div>}
+      </dl>
+
       <ul className="my-4 divide-y divide-gray-100 border-y border-gray-100">
-        {sale.items.map((i, n) => (
+        {sale.items?.map((i, n) => (
           <li key={n} className="flex justify-between gap-3 py-2">
             <span className="min-w-0"><span className="block">{i.name}</span><span className="text-xs text-gray-500">{i.quantity} × {money(i.unitPrice)}</span></span>
             <span className="shrink-0 font-medium">{money(i.lineTotal)}</span>
           </li>
         ))}
       </ul>
+
       <dl className="space-y-1">
         <div className="flex justify-between"><dt className="text-gray-600">Subtotal</dt><dd>{money(sale.subtotal)}</dd></div>
         {sale.discount > 0 && <div className="flex justify-between"><dt className="text-gray-600">Discount</dt><dd>-{money(sale.discount)}</dd></div>}
         {sale.refundedTotal > 0 && <div className="flex justify-between"><dt className="text-gray-600">Refunded</dt><dd>-{money(sale.refundedTotal)}</dd></div>}
         <div className="flex justify-between text-base font-bold text-navy-900"><dt>Total</dt><dd>{money(sale.total)}</dd></div>
         <div className="flex justify-between"><dt className="text-gray-600">Paid ({sale.paymentMethod})</dt><dd>{money(sale.amountPaid)}</dd></div>
+        <div className="flex justify-between"><dt className="text-gray-600">Payment status</dt><dd className="capitalize">{sale.paymentStatus?.replace('_', ' ')}</dd></div>
         {sale.total - sale.amountPaid > 0 && <div className="flex justify-between text-danger-dark"><dt>Balance</dt><dd>{money(sale.total - sale.amountPaid)}</dd></div>}
       </dl>
+
       {sale.soldBy?.fullName && <p className="mt-4 text-center text-xs text-gray-500">Served by {sale.soldBy.fullName}</p>}
     </div>
+  );
+}
+
+
+export function DownloadReceiptButton({ sale }) {
+  const [busy, setBusy] = useState(false);
+
+  const download = async () => {
+    const node = document.getElementById('receipt-card');
+    if (!node) return;
+    setBusy(true);
+    try {
+      // loaded on click so they don't bloat the main bundle
+      const [{ default: html2canvas }, { jsPDF }] = await Promise.all([import('html2canvas'), import('jspdf')]);
+      const canvas = await html2canvas(node, { scale: 2, backgroundColor: '#ffffff' });
+      const w = 80; // receipt width in mm
+      const h = (canvas.height * w) / canvas.width;
+      const pdf = new jsPDF({ unit: 'mm', format: [w + 10, h + 10] });
+      pdf.addImage(canvas.toDataURL('image/png'), 'PNG', 5, 5, w, h);
+      pdf.save(`${sale.receiptNo || 'receipt'}.pdf`);
+    } catch (err) {
+      console.error(err);
+      alert('Could not generate the receipt. Please try again.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <button type="button" onClick={download} disabled={busy} className={ghostBtn}>
+      {busy ? 'Preparing…' : 'Download'}
+    </button>
   );
 }

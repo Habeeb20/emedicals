@@ -17,7 +17,9 @@ import engagementRoutes from "./routes/engagementRoutes.js"
 import { chatPlanpaystackWebhook } from './controllers/chatPlan.controller.js';
 import { webhookRouter } from './routes/pharmacy.routes.js';
 import pharmacyRoutes from "./routes/pharmacy.routes.js"
+import shopRouter from "./routes/shopRoutes.js"
 import http from 'http';
+import memorialRoutes from './routes/memorialRoutes.js'
 connectDb()
 const app = express();
 const isProd = process.env.NODE_ENV === 'production';
@@ -33,7 +35,7 @@ app.use(morgan('dev'));
 app.use(helmet());
 app.use(
   cors({
-    origin: (process.env.CLIENT_URL || 'http://localhost:5173').split(',').map((o) => o.trim()),
+    origin: (process.env.CLIENT_URL || 'http://localhost:5173' || 'http://localhost:5174').split(',').map((o) => o.trim()),
     credentials: true,
   })
 );
@@ -56,10 +58,13 @@ app.get('/api/health', (_req, res) =>
 // Routes
 app.use('/api', appointmentRoutes);
 app.use('/api', pharmacyRoutes);
+app.use("/api/shop", shopRouter)
 app.use("/api/labs", labRoutes)
 app.use('/api/users', userRoutes);
 app.use('/api/super-admin', superAdminRoutes);
-app.use('/api/engagement', engagementRoutes)
+app.use('/api', engagementRoutes)
+
+app.use('/api/memorial', memorialRoutes);
 
 app.use((err, _req, res, _next) => res.status(err.status || 500).json({ status: 'error', message: err.message }));
 // 404 + error handling (must come last)

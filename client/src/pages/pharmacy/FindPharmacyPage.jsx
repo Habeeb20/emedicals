@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import  api from './api';
+import api, { getErrorMessage } from './api';
 import { useDebounced } from '../appointments/hooks';
 
 import { Avatar, Card, EmptyState, ErrorNote, PageHeader, PageShell, Skeleton } from '../appointments/ui';
@@ -13,16 +13,23 @@ const SORTS = [
   { id: 'nearest', label: 'Nearest to me' },
 ];
 
+// axios gives { data: <response body> }. The body may be { data: ... } or the payload itself.
+const pick = (r) => r?.data?.data ?? r?.data;
+
 // Shared by the list and the profile page
 export async function shareOrg(org) {
-  const url = `${window.location.origin}/pharmacies/${org._id}`;
+  // The profile page reads its id from router state, so a shared link can only open the list
+  const url = `${window.location.origin}/pharmacies`;
   let channel = 'copy_link';
   try {
     if (navigator.share) { await navigator.share({ title: org.name, text: `Check out ${org.name} on eMedicals`, url }); channel = 'other'; }
     else { await navigator.clipboard.writeText(url); }
   } catch (e) { if (e?.name === 'AbortError') return null; }
-  try { const r = await api(`/interactions/organization/${org._id}/share`, { method: 'POST', body: { channel } }); return { channel, sharesCount: r.sharesCount }; }
-  catch { return { channel }; }
+  try {
+    // axios sends the payload from `data`, not `body`
+    const r = await api.post(`/interactions/organization/${org._id}/share`, { channel });
+    return { channel, sharesCount: pick(r)?.sharesCount };
+  } catch { return { channel }; }
 }
 
 export const addressLine = (a = {}) => [a.street, a.city, a.state].filter(Boolean).join(', ');
@@ -34,9 +41,9 @@ export function PharmacyCard({ org, onChange }) {
   const like = async () => {
     setBusy(true); setNote('');
     try {
-      const r = await api(`/interactions/organization/${org._id}/like`, { method: 'POST' });
+      const r = pick(await api.post(`/interactions/organization/${org._id}/like`));
       onChange({ ...org, isLiked: r.liked, likesCount: r.likesCount });
-    } catch (e) { setNote(e.message); } finally { setBusy(false); }
+    } catch (e) { setNote(getErrorMessage(e)); } finally { setBusy(false); }
   };
   const share = async () => {
     const r = await shareOrg(org);
@@ -47,7 +54,13 @@ export function PharmacyCard({ org, onChange }) {
 
   return (
     <Card className="space-y-3">
-      <Link to={`/pharmacies/${org._id}`} className="flex items-start gap-3">
+    
+      <Link
+  to="/dashboard?tab=pharmacy-profile"
+  state={{ orgId: org._id }}
+  onClick={() => sessionStorage.setItem('pharmacyId', org._id)}
+  className="flex items-start gap-3"
+>
         {org.logo?.url ? <img src={org.logo.url} alt="" className="h-12 w-12 shrink-0 rounded-full object-cover" /> : <Avatar tone="pharmacy" name={org.name} />}
         <div className="min-w-0 flex-1">
           <h3 className="truncate font-semibold text-navy-900">{org.name}</h3>
@@ -89,9 +102,15 @@ export default function FindPharmacyPage() {
   const load = useCallback(() => {
     if (sort === 'nearest' && !coords) return;
     const params = { page, limit: 12, sort, ...(dq.trim() ? { q: dq.trim() } : {}), ...(sort === 'nearest' ? coords : {}) };
-    api('/pharmacies', { params }).then((r) => { setItems(r.data?.data); setMeta(r.meta); setError(''); }).catch((e) => setError(e.message));
-    console.log(items)
+    api.get('/pharmacies', { params })
+      .then((r) => {
+        setItems(r.data?.data || []);
+        setMeta(r.data?.meta || null);
+        setError('');
+      })
+      .catch((e) => { setItems((cur) => cur ?? []); setError(getErrorMessage(e)); });
   }, [dq, sort, page, coords]);
+
   useEffect(() => { load(); }, [load]);
   useEffect(() => { setPage(1); }, [dq, sort]);
 
@@ -115,13 +134,19 @@ export default function FindPharmacyPage() {
       </div>
       <div className="mb-4"><ErrorNote>{error}</ErrorNote></div>
 
-      {!items ? <div className="space-y-4"><Skeleton className="h-44 rounded-2xl" /><Skeleton className="h-44 rounded-2xl" /></div>
-        : items.length === 0 ? <EmptyState icon="pill" title="No pharmacies found" body="Try a different name or sort order." />
-        : (
-          <ul className="space-y-4">
-            {items?.map((o) => <li key={o._id}><PharmacyCard org={o} onChange={(n) => setItems((l) => l.map((x) => (x._id === n._id ? n : x)))} /></li>)}
-          </ul>
-        )}
+      {!items ? (
+        <div className="space-y-4"><Skeleton className="h-44 rounded-2xl" /><Skeleton className="h-44 rounded-2xl" /></div>
+      ) : items.length === 0 ? (
+        <EmptyState icon="pill" title="No pharmacies found" body="Try a different name or sort order." />
+      ) : (
+        <ul className="space-y-4">
+          {items.map((o) => (
+            <li key={o._id}>
+              <PharmacyCard org={o} onChange={(n) => setItems((l) => l.map((x) => (x._id === n._id ? n : x)))} />
+            </li>
+          ))}
+        </ul>
+      )}
 
       {meta?.pages > 1 && (
         <div className="mt-5 flex items-center justify-between">
