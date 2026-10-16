@@ -14,8 +14,8 @@ const patient = restrictTo('patient');
 const provider = restrictTo('doctor', 'hospital_admin');
 
 // providers (browse + settings)
-router.get('/providers', verifyToken, providers.listProviders);
-router.get('/providers/departments', verifyToken, providers.listDepartments);
+router.get('/providers',  providers.listProviders);
+router.get('/providers/departments',  providers.listDepartments);
 router.get('/providers/doctors/:id', verifyToken, providers.getDoctor);
 router.get('/providers/hospitals/:id', verifyToken, providers.getHospital);
 router.patch('/providers/me/settings', verifyToken, restrictTo('doctor', 'hospital_admin', 'super_admin'), providers.updateMySettings);

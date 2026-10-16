@@ -41,6 +41,39 @@ export const verifyToken = async (req, res, next) => {
     return next(error);   // real server/DB errors stay 500s instead of looking like a bad token
   }
 };
+export const protect = async (req, res, next) => {
+  try {
+    const [scheme, token] = (req.headers.authorization || '').split(' ');
+    if (scheme !== 'Bearer' || !token) return unauthorized(res, 'Access token required');
+
+    let decoded;
+    try {
+      decoded = jwt.verify(token, process.env.JWT_SECRET);
+    } catch (err) {
+      // 401 (not 403) so the frontend knows to send the user back to login
+      return err.name === 'TokenExpiredError'
+        ? unauthorized(res, 'Session expired. Please log in again.', { code: 'TOKEN_EXPIRED' })
+        : unauthorized(res, 'Invalid token');
+    }
+
+    const user = await User.findById(decoded.id).select('-password');
+    if (!user) return unauthorized(res, 'User no longer exists');
+
+    // Checked on every request, so deactivating or un-approving a user cuts them off immediately
+    if (!user.isActive) {
+      return res.status(403).json({ success: false, message: 'This account has been deactivated' });
+    }
+    if (!user.isApproved) {
+      return res.status(403).json({ success: false, message: 'Your account is awaiting admin approval' });
+    }
+
+    req.user = user;
+    req.userId = user._id;
+    return next();
+  } catch (error) {
+    return next(error);   // real server/DB errors stay 500s instead of looking like a bad token
+  }
+};
 
 /**
  * Role-based access. Use after verifyToken:

@@ -40,6 +40,7 @@ export const ROLE_LABELS = {
   mortuary_officer: 'Mortuary officer',
   cemetery_officer: 'Cemetery officer',
   super_admin: 'Super admin',
+  agent: 'agent'
 };
 
 /*

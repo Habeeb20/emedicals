@@ -29,7 +29,7 @@ export default function BookingSheet({ provider: p, onClose, onBooked }) {
       if (isDoctor) body.doctorId = p.id; else { body.organizationId = p.id; body.department = department; }
       const r = await api('/appointments', { method: 'POST', body });
       setResult(r);
-    } catch (e) { setError(e.message); } finally { setBusy(false); }
+    } catch (e) { setError("please login to perform this action"); } finally { setBusy(false); }
   };
 
   if (result) {

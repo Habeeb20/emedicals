@@ -13,18 +13,21 @@ import axios from 'axios';
 import { Interaction } from '../models/User.js';
 import { ordinal, pick, numbers, toImage, setUserImage, validateAll, saveAll, buildProfile, applyUser, applyDoctor, applyStaff, applyOrganization } from '../utils/helpers.js';
 import { USER_FIELDS, DOCTOR_FIELDS, STAFF_FIELDS, ORG_FIELDS } from '../utils/helpers.js';
-import { Review } from '../models/User.js';
+// import { Review } from '../models/User.js';
+import {  Review, AgentSignup, LoyaltyTransaction, rangeStart } from '../models/User.js';
 import mongoose from 'mongoose';
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-const SIGNUP_ROLES = ['patient', 'doctor', 'nurse', 'lab_tech', 'pharmacist', 'hospital_admin', 'mortuary_officer', 'cemetery_officer'];
+
+const SIGNUP_ROLES = ['patient', 'doctor', 'nurse', 'lab_tech', 'pharmacist', 'hospital_admin', 'mortuary_officer', 'cemetery_officer', 'agent'];
+const NO_ORGANIZATION_ROLES = ['patient', 'doctor', 'nurse', 'agent'];
 // Roles that have a StaffProfile (everything except patient, doctor and super_admin)
 const STAFF_ROLES = ['nurse', 'lab_tech', 'pharmacist', 'hospital_admin', 'mortuary_officer', 'cemetery_officer'];
 const DASHBOARD_LIMIT = 50;
 const EDIRECT_AUTH = 'https://auth.edirect.ng/api/auth/register';
 
 
-const NO_ORGANIZATION_ROLES = ['patient', 'doctor', 'nurse'];
+
 
 // Every other role runs an organization, so the organization type follows from the role.
 const ORG_TYPES_BY_ROLE = {
@@ -103,6 +106,74 @@ export const buildOrganization = ({ role, input, ownerId, userEmail, userPhone }
 
 
 
+const dayLabel = (d) => d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', timeZone: 'UTC' });
+
+export const buildAgentOverview = async (user) => {
+  const agentId = new mongoose.Types.ObjectId(user._id);
+  const start = new Date();
+  start.setUTCHours(0, 0, 0, 0);
+  start.setUTCDate(start.getUTCDate() - 13); // 14 days including today
+
+  const [stats, perDay, recent] = await Promise.all([
+    AgentSignup.statsFor(agentId),
+    AgentSignup.aggregate([
+      { $match: { agent: agentId, createdAt: { $gte: start } } },
+      {
+        $group: {
+          _id: { $dateToString: { format: '%Y-%m-%d', date: '$createdAt' } },
+          users: { $sum: { $cond: [{ $eq: ['$kind', 'user'] }, 1, 0] } },
+          organizations: { $sum: { $cond: [{ $eq: ['$kind', 'organization'] }, 1, 0] } },
+        },
+      },
+    ]),
+    AgentSignup.find({ agent: agentId })
+      .sort({ createdAt: -1 })
+      .limit(5)
+      .populate('user', 'fullName email')
+      .populate('organization', 'name type'),
+  ]);
+
+  const byDay = new Map(perDay.map((d) => [d._id, d]));
+  const days = Array.from({ length: 14 }, (_, i) => {
+    const d = new Date(start);
+    d.setUTCDate(start.getUTCDate() + i);
+    const row = byDay.get(d.toISOString().slice(0, 10));
+    return { label: dayLabel(d), users: row?.users || 0, organizations: row?.organizations || 0 };
+  });
+  const spark = days.slice(-7).map((d) => d.users + d.organizations);
+  const r = stats.ranges;
+  const hint = (x) => `${x.users} users · ${x.organizations} orgs`;
+
+  return {
+    headline: r.today.total
+      ? `You have registered ${r.today.total} account${r.today.total === 1 ? '' : 's'} today. Keep going!`
+      : 'Register someone today and earn 10 loyalty points.',
+    widgets: [
+      { id: 'agent-today', type: 'kpi', label: 'Signups today', value: r.today.total, icon: 'users', spark, tab: 'agent-signups', hint: hint(r.today) },
+      { id: 'agent-week', type: 'kpi', label: 'Last 7 days', value: r['7d'].total, icon: 'calendar', tab: 'agent-signups', hint: hint(r['7d']) },
+      { id: 'agent-orgs', type: 'kpi', label: 'Organizations registered', value: r.all.organizations, icon: 'building', tab: 'agent-signups', hint: 'All time' },
+      { id: 'agent-points', type: 'kpi', label: 'Points from signups', value: stats.pointsEarned, icon: 'gift', hint: `Balance: ${user.loyalty?.points ?? 0} points` },
+      {
+        id: 'agent-trend', type: 'area', span: 8,
+        title: 'Signups, last 14 days', subtitle: 'Users and organizations you registered',
+        series: [{ key: 'users', label: 'Users' }, { key: 'organizations', label: 'Organizations' }],
+        data: days,
+      },
+      {
+        id: 'agent-recent', type: 'list', span: 4,
+        title: 'Latest signups', subtitle: 'Tap to see all', empty: 'No signups yet',
+        items: recent.map((s) => ({
+          title: s.organization?.name || s.user?.fullName || 'Removed account',
+          subtitle: s.user?.email,
+          meta: new Date(s.createdAt).toLocaleDateString('en-NG', { day: 'numeric', month: 'short' }),
+          badge: { text: s.kind === 'organization' ? 'Organization' : 'User', tone: s.kind === 'organization' ? 'blue' : 'gray' },
+          tab: 'agent-signups',
+        })),
+      },
+    ],
+  };
+};
+
 const fail = (res, status, message, extra = {}) => res.status(status).json({ success: false, message, ...extra });
 const normalizeEmail = (email) => String(email || '').trim().toLowerCase();
 
@@ -139,105 +210,323 @@ const generatePatientId = async () => {
   return `EM-${Date.now()}`;
 };
 
-/* ------------------------------------------------------------------ */
-/* POST /api/users/signup                                              */
-/* ------------------------------------------------------------------ */
-export const signup = async (req, res) => {
-  try {
-    const { fullName, phone, password, role = 'patient', gender, dateOfBirth } = req.body;
-    const email = normalizeEmail(req.body.email);
 
-    if (!fullName || !email || !password) return fail(res, 400, 'Full name, email and password are required');
-    if (!EMAIL_RE.test(email)) return fail(res, 400, 'Please provide a valid email address');
-    if (password.length < 8) return fail(res, 400, 'Password must be at least 8 characters');
-    if (!SIGNUP_ROLES.includes(role)) return fail(res, 400, 'Invalid role');
+const httpError = (status, message) => Object.assign(new Error(message), { status });
 
-    // The user and the organization point at each other, so both ids are created up front
-    const userId = new mongoose.Types.ObjectId();
-    const needsOrganization = !NO_ORGANIZATION_ROLES.includes(role);
+// Referral codes are 8 hex characters. An unknown code never blocks signup.
+const findReferrer = async (code) => {
+  const clean = String(code || '').trim().toUpperCase();
+  if (!/^[A-F0-9]{8}$/.test(clean)) return null;
+  return User.findOne({ referralCode: clean, isActive: true, isApproved: true }).select('_id role');
+};
 
-    // Check the organization details BEFORE creating anything, so a bad form never leaves a half-made account
-    let organization = null;
-    if (needsOrganization) {
-      const built = buildOrganization({ role, input: req.body.organization, ownerId: userId, userEmail: email, userPhone: phone });
-      if (built.error) return fail(res, 400, built.error);
-      organization = built.doc;
-      try {
-        await organization.validate();
-      } catch (err) {
-        if (err.name === 'ValidationError') return fail(res, 400, Object.values(err.errors)[0].message);
-        throw err;
-      }
-    }
+const registerAccount = async (body, { referrer = null, agent = null } = {}) => {
+  const { fullName, phone, password, role = 'patient', gender, dateOfBirth } = body;
+  const email = normalizeEmail(body.email);
 
-    const existing = await User.findOne({ $or: [{ email }, ...(phone ? [{ phone }] : [])] }).select('email phone');
-    if (existing) {
-      return fail(res, 409, existing.email === email ? 'Email is already registered' : 'Phone number is already registered');
-    }
+  if (!fullName || !email || !password) throw httpError(400, 'Full name, email and password are required');
+  if (!EMAIL_RE.test(email)) throw httpError(400, 'Please provide a valid email address');
+  if (typeof password !== 'string' || password.length < 8) throw httpError(400, 'Password must be at least 8 characters');
+  if (!SIGNUP_ROLES.includes(role)) throw httpError(400, 'Invalid role');
+  if (agent && role === 'agent') throw httpError(403, 'Agents cannot register other agents');
 
-    // Anyone can register as a patient. Professional roles wait for admin approval.
-    const isStaff = role !== 'patient';
+  const userId = new mongoose.Types.ObjectId();
+  const needsOrganization = !NO_ORGANIZATION_ROLES.includes(role);
 
-    let user;
+  let organization = null;
+  if (needsOrganization) {
+    const built = buildOrganization({ role, input: body.organization, ownerId: userId, userEmail: email, userPhone: phone });
+    if (built.error) throw httpError(400, built.error);
+    organization = built.doc;
     try {
-      user = await User.create({
-        _id: userId, fullName, email, phone, password, role, gender, dateOfBirth,
-        organization: organization?._id, isApproved: !isStaff,
-      });
+      await organization.validate();
     } catch (err) {
-      if (err.code === 11000) return fail(res, 409, 'Email or phone number is already registered');
+      if (err.name === 'ValidationError') throw httpError(400, Object.values(err.errors)[0].message);
       throw err;
     }
+  }
 
-    if (organization) {
-      try {
-        await organization.save();   // starts as "pending" until an administrator approves it
-      } catch (err) {
-        await User.deleteOne({ _id: user._id });   // don't leave an account behind that has no organization
-        throw err;
-      }
-    }
+  const existing = await User.findOne({ $or: [{ email }, ...(phone ? [{ phone }] : [])] }).select('email phone');
+  if (existing) {
+    throw httpError(409, existing.email === email ? 'Email is already registered' : 'Phone number is already registered');
+  }
 
-    if (role === 'patient') {
-      await PatientProfile.create({ user: user._id, patientId: await generatePatientId() });
-    }
+  const isStaff = role !== 'patient'; // professionals (and agents) wait for admin approval
 
-    const otp = await sendOtp(user);
-
-    // Mirror the account on Edirect. A failure here must not block signup.
-    try {
-      await axios.post(EDIRECT_AUTH, {
-        platform: 'emedicals',
-        full_name: fullName,
-        email,
-        userId: user._id.toString(),
-        password,
-        role: 'user',
-      });
-      console.log('Edirect registration successful');
-    } catch (err) {
-      console.error('Edirect failed:', err.response?.data || err.message);
-    }
-
-    return res.status(201).json({
-      success: true,
-      message: otp.sent
-        ? 'Account created. We sent a verification code to your email.'
-        : 'Account created, but we could not send the verification code. Please request a new one.',
-      data: {
-        email: user.email,
-        requiresVerification: true,
-        requiresApproval: isStaff,
-        otpSent: otp.sent,
-        ...(organization && {
-          organization: { _id: organization._id, name: organization.name, type: organization.type, status: organization.status },
-        }),
-      },
+  let user;
+  try {
+    user = await User.create({
+      _id: userId, fullName, email, phone, password, role, gender, dateOfBirth,
+      organization: organization?._id, isApproved: !isStaff,
+      referredBy: referrer?._id,
+      registeredByAgent: agent?._id,
     });
+  } catch (err) {
+    if (err.code === 11000) throw httpError(409, 'Email or phone number is already registered');
+    throw err;
+  }
+
+  if (organization) {
+    try {
+      await organization.save();
+    } catch (err) {
+      await User.deleteOne({ _id: user._id });
+      throw err;
+    }
+  }
+
+  if (role === 'patient') {
+    await PatientProfile.create({ user: user._id, patientId: await generatePatientId() });
+  }
+
+  // ---- Rewards. Failures here must never break a signup that already succeeded. ----
+  let agentPoints = 0;
+  if (agent) {
+    try {
+      const r = await User.awardPoints(agent._id, 'AGENT_SIGNUP', user._id.toString());
+      agentPoints = r.awarded;
+    } catch (err) {
+      console.error('Agent points failed:', err.message);
+    }
+    try {
+      await AgentSignup.create({
+        agent: agent._id,
+        user: user._id,
+        organization: organization?._id,
+        kind: organization ? 'organization' : 'user',
+        role,
+        pointsAwarded: agentPoints,
+      });
+    } catch (err) {
+      console.error('Agent signup tracking failed:', err.message);
+    }
+  } else if (referrer) {
+    try {
+      await User.awardPoints(referrer._id, 'REFERRAL', user._id.toString());
+    } catch (err) {
+      console.error('Referral points failed:', err.message);
+    }
+  }
+
+  const otp = await sendOtp(user);
+
+  try {
+    await axios.post(EDIRECT_AUTH, {
+      platform: 'emedicals', full_name: fullName, email,
+      userId: user._id.toString(), password, role: 'user',
+    });
+  } catch (err) {
+    console.error('Edirect failed:', err.response?.data || err.message);
+  }
+
+  return {
+    message: otp.sent
+      ? 'Account created. We sent a verification code to your email.'
+      : 'Account created, but we could not send the verification code. Please request a new one.',
+    data: {
+      email: user.email,
+      requiresVerification: true,
+      requiresApproval: isStaff,
+      otpSent: otp.sent,
+      ...(agent && { pointsAwarded: agentPoints }),
+      ...(organization && {
+        organization: { _id: organization._id, name: organization.name, type: organization.type, status: organization.status },
+      }),
+    },
+  };
+};
+
+/* POST /api/users/signup  (optional body.referralCode) */
+export const signup = async (req, res) => {
+  try {
+    const referrer = await findReferrer(req.body.referralCode);
+    const result = await registerAccount(req.body, { referrer });
+    return res.status(201).json({ success: true, ...result });
   } catch (err) {
     return handleError(res, err, 'signup');
   }
 };
+
+/* POST /api/users/agent/signup  (agents only) */
+export const agentSignup = async (req, res) => {
+  try {
+    const agent = req.user;
+    if (agent.role !== 'agent' || !agent.isApproved || !agent.isActive) {
+      return fail(res, 403, 'Only approved agents can register accounts');
+    }
+    const result = await registerAccount(req.body, { agent });
+    return res.status(201).json({ success: true, ...result });
+  } catch (err) {
+    return handleError(res, err, 'agentSignup');
+  }
+};
+
+/* GET /api/users/me/referral */
+export const getMyReferral = async (req, res) => {
+  try {
+    const me = await User.findById(req.user._id).select('referralCode');
+    if (!me) return fail(res, 404, 'User not found');
+
+    // Accounts created before referral codes existed get one now
+    for (let i = 0; i < 5 && !me.referralCode; i += 1) {
+      me.referralCode = crypto.randomBytes(4).toString('hex').toUpperCase();
+      try { await me.save(); } catch (err) { if (err.code !== 11000) throw err; me.referralCode = undefined; }
+    }
+
+    const [referredCount, earned] = await Promise.all([
+      User.countDocuments({ referredBy: me._id }),
+      LoyaltyTransaction.aggregate([
+        { $match: { user: me._id, action: 'REFERRAL' } },
+        { $group: { _id: null, points: { $sum: '$points' } } },
+      ]),
+    ]);
+
+    return res.json({
+      success: true,
+      data: { code: me.referralCode, referredCount, pointsEarned: earned[0]?.points || 0 },
+    });
+  } catch (err) {
+    return handleError(res, err, 'getMyReferral');
+  }
+};
+
+/* GET /api/users/agent/stats */
+export const getAgentStats = async (req, res) => {
+  try {
+    const data = await AgentSignup.statsFor(req.user._id);
+    return res.json({ success: true, data });
+  } catch (err) {
+    return handleError(res, err, 'getAgentStats');
+  }
+};
+
+/* GET /api/users/agent/signups?range=today|3d|7d|30d|all&kind=user|organization&page=1&limit=20 */
+export const getAgentSignups = async (req, res) => {
+  try {
+    const { range = 'all', kind } = req.query;
+    const page = Math.max(1, parseInt(req.query.page, 10) || 1);
+    const limit = Math.min(50, Math.max(1, parseInt(req.query.limit, 10) || 20));
+
+    const filter = { agent: req.user._id };
+    const start = rangeStart(range);
+    if (start) filter.createdAt = { $gte: start };
+    if (['user', 'organization'].includes(kind)) filter.kind = kind;
+
+    const [items, total] = await Promise.all([
+      AgentSignup.find(filter)
+        .sort({ createdAt: -1 })
+        .skip((page - 1) * limit)
+        .limit(limit)
+        .populate('user', 'fullName email phone role isVerified isApproved isActive createdAt')
+        .populate('organization', 'name type status phone email address.city address.state'),
+      AgentSignup.countDocuments(filter),
+    ]);
+
+    return res.json({ success: true, data: { items, total, page, pages: Math.ceil(total / limit) } });
+  } catch (err) {
+    return handleError(res, err, 'getAgentSignups');
+  }
+};
+
+/* ------------------------------------------------------------------ */
+/* POST /api/users/signup                                              */
+/* ------------------------------------------------------------------ */
+// export const signup = async (req, res) => {
+//   try {
+//     const { fullName, phone, password, role = 'patient', gender, dateOfBirth } = req.body;
+//     const email = normalizeEmail(req.body.email);
+
+//     if (!fullName || !email || !password) return fail(res, 400, 'Full name, email and password are required');
+//     if (!EMAIL_RE.test(email)) return fail(res, 400, 'Please provide a valid email address');
+//     if (password.length < 8) return fail(res, 400, 'Password must be at least 8 characters');
+//     if (!SIGNUP_ROLES.includes(role)) return fail(res, 400, 'Invalid role');
+
+//     // The user and the organization point at each other, so both ids are created up front
+//     const userId = new mongoose.Types.ObjectId();
+//     const needsOrganization = !NO_ORGANIZATION_ROLES.includes(role);
+
+//     // Check the organization details BEFORE creating anything, so a bad form never leaves a half-made account
+//     let organization = null;
+//     if (needsOrganization) {
+//       const built = buildOrganization({ role, input: req.body.organization, ownerId: userId, userEmail: email, userPhone: phone });
+//       if (built.error) return fail(res, 400, built.error);
+//       organization = built.doc;
+//       try {
+//         await organization.validate();
+//       } catch (err) {
+//         if (err.name === 'ValidationError') return fail(res, 400, Object.values(err.errors)[0].message);
+//         throw err;
+//       }
+//     }
+
+//     const existing = await User.findOne({ $or: [{ email }, ...(phone ? [{ phone }] : [])] }).select('email phone');
+//     if (existing) {
+//       return fail(res, 409, existing.email === email ? 'Email is already registered' : 'Phone number is already registered');
+//     }
+
+//     // Anyone can register as a patient. Professional roles wait for admin approval.
+//     const isStaff = role !== 'patient';
+
+//     let user;
+//     try {
+//       user = await User.create({
+//         _id: userId, fullName, email, phone, password, role, gender, dateOfBirth,
+//         organization: organization?._id, isApproved: !isStaff,
+//       });
+//     } catch (err) {
+//       if (err.code === 11000) return fail(res, 409, 'Email or phone number is already registered');
+//       throw err;
+//     }
+
+//     if (organization) {
+//       try {
+//         await organization.save();   // starts as "pending" until an administrator approves it
+//       } catch (err) {
+//         await User.deleteOne({ _id: user._id });   // don't leave an account behind that has no organization
+//         throw err;
+//       }
+//     }
+
+//     if (role === 'patient') {
+//       await PatientProfile.create({ user: user._id, patientId: await generatePatientId() });
+//     }
+
+//     const otp = await sendOtp(user);
+
+//     // Mirror the account on Edirect. A failure here must not block signup.
+//     try {
+//       await axios.post(EDIRECT_AUTH, {
+//         platform: 'emedicals',
+//         full_name: fullName,
+//         email,
+//         userId: user._id.toString(),
+//         password,
+//         role: 'user',
+//       });
+//       console.log('Edirect registration successful');
+//     } catch (err) {
+//       console.error('Edirect failed:', err.response?.data || err.message);
+//     }
+
+//     return res.status(201).json({
+//       success: true,
+//       message: otp.sent
+//         ? 'Account created. We sent a verification code to your email.'
+//         : 'Account created, but we could not send the verification code. Please request a new one.',
+//       data: {
+//         email: user.email,
+//         requiresVerification: true,
+//         requiresApproval: isStaff,
+//         otpSent: otp.sent,
+//         ...(organization && {
+//           organization: { _id: organization._id, name: organization.name, type: organization.type, status: organization.status },
+//         }),
+//       },
+//     });
+//   } catch (err) {
+//     return handleError(res, err, 'signup');
+//   }
+// };
 /* ------------------------------------------------------------------ */
 /* POST /api/users/login                                               */
 /* ------------------------------------------------------------------ */
@@ -361,6 +650,10 @@ export const getDashboard = async (req, res) => {
 
     const user = await User.findById(userId).lean();
     if (!user) return fail(res, 404, 'User not found');
+
+    if (req.user.role === 'agent') {
+  return res.json({ success: true, data: await buildAgentOverview(req.user) });
+}
 
     // Organizations the user belongs to or owns
     const orgConditions = [{ owner: userId }];

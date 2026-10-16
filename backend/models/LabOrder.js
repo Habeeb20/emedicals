@@ -16,7 +16,7 @@ const orderItemSchema = new mongoose.Schema(
 
 const labOrderSchema = new mongoose.Schema(
   {
-    patient: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true, index: true },
+    patient: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: false, index: true },
     orderedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },   // doctor, optional for walk-ins
     lab: { type: mongoose.Schema.Types.ObjectId, ref: 'Organization', required: true, index: true },
     orderNumber: { type: String, unique: true },
@@ -32,6 +32,10 @@ const labOrderSchema = new mongoose.Schema(
     collectedAt: Date,
     completedAt: Date,
     processedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+    clinicalNote: { type: String, maxlength: 1000 },
+urgent: { type: Boolean, default: false },
+paymentReference: { type: String, index: true },
+paidAt: Date,
   },
   { timestamps: true }
 );

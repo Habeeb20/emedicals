@@ -21,6 +21,12 @@ import MemorialDirectoryPage from './pages/memorial/MemorialDirectoryPage.jsx';
 import MemorialProfilePage from './pages/memorial/MemorialProfilePage.jsx';
 import LabDirectory from './pages/Lab/LabDirectory.jsx';
 import LabOrderDetail from './pages/Lab/LabOrderdetail.jsx';
+import LabDetail from './pages/Lab/LabDetails.jsx';
+import FindPharmacyPage from './pages/pharmacy/FindPharmacyPage.jsx';
+import ProviderSearchPage from './pages/appointments/ProviderSearchPage.jsx';
+import HospitalDirectoryPage from './pages/hospital/HospitalDirectoryPage.jsx';
+import HospitalProfilePage from './pages/hospital/HospitalProfilePage.jsx';
+import Footer from './components/Footer.jsx';
 
 const NotFound = () => (
   <div className="flex min-h-screen flex-col items-center justify-center gap-4 px-4 text-center">
@@ -45,9 +51,15 @@ export default function App() {
         <Route path="/shop/checkout" element={<CheckoutPage />} /> {/* sends guests to /login?next=... itself */}
         <Route path="/memorial" element={<MemorialDirectoryPage />} />
         <Route path="/labs" element={<LabDirectory />} />
-        <Route path="/labs/:id" element={<LabOrderDetail />} />
+        <Route path="/labs/:id" element={<LabDetail />} />
         <Route path="/memorial/:id" element={<MemorialProfilePage />} />
         <Route path="/memorial/bookings" element={<MyBookingsPage />} />  
+        <Route path="/pharmacy" element={<FindPharmacyPage />} />
+        <Route path="/doctors" element={<ProviderSearchPage/>} />
+        <Route path="/laboratory" element={<LabDirectory/>} />
+        {/* <Route path="/hospitals" element={<ProviderSearchPage/>} /> */}
+              <Route path="/hospitals" element={<HospitalDirectoryPage />} />
+            <Route path="/hospitals/:id" element={<HospitalProfilePage />} />
         <Route element={<PublicOnlyRoute />}>
           <Route path="/signup" element={<Signup />} />
           <Route path="/login" element={<Login />} />
@@ -90,6 +102,7 @@ export default function App() {
 
         <Route path="*" element={<NotFound />} />
       </Routes>
+     
     </>
   );
 }

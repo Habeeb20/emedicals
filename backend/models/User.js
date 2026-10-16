@@ -1,20 +1,5 @@
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 import mongoose from 'mongoose';
 import bcrypt from 'bcryptjs';
 import crypto from 'crypto';
@@ -24,7 +9,7 @@ const { Schema } = mongoose;
 
 export const ROLES = [
   'patient', 'doctor', 'nurse', 'lab_tech', 'pharmacist',
-  'hospital_admin', 'mortuary_officer', 'cemetery_officer', 'super_admin',
+  'hospital_admin', 'mortuary_officer', 'cemetery_officer', 'super_admin', 'agent',
 ];
 
 // Roles that can be liked / reviewed / shared as a person
@@ -45,7 +30,9 @@ export const LOYALTY_RULES = {
   REVIEW:                { points: 5,   label: 'Review a provider (no visit on record)' },
   LIKE:                  { points: 1,   label: 'Like a doctor/organization', dailyCap: 10 },
   SHARE:                 { points: 2,   label: 'Share a doctor/organization', dailyCap: 5 },
-  REFERRAL:              { points: 100, label: 'Refer a friend who signs up' },
+  // REFERRAL:              { points: 100, label: 'Refer a friend who signs up' },
+    REFERRAL:     { points: 2,  label: 'Someone signed up with your referral link' },
+  AGENT_SIGNUP: { points: 100, label: 'Register a user or organization as an agent' },
 };
 
 export const TIERS = [
@@ -102,6 +89,8 @@ const userSchema = new Schema(
       default: () => crypto.randomBytes(4).toString('hex').toUpperCase(),
     },
     referredBy: { type: Schema.Types.ObjectId, ref: 'User' },
+
+registeredByAgent: { type: Schema.Types.ObjectId, ref: 'User', index: true },
   },
   { timestamps: true }
 );
@@ -347,6 +336,69 @@ export const Review = mongoose.model('Review', reviewSchema);
 
 
 
+/* ------------------------------------------------------------------ */
+/* AGENT SIGNUPS: one row per account/organization an agent registers  */
+/* ------------------------------------------------------------------ */
+const DAY = 24 * 60 * 60 * 1000;
+
+// Returns the start date for a range key, or null for "all time"
+export const rangeStart = (range) => {
+  if (range === 'today') {
+    const d = new Date();
+    d.setUTCHours(0, 0, 0, 0); // UTC day, same as the loyalty daily caps
+    return d;
+  }
+  const days = { '3d': 3, '7d': 7, '30d': 30 }[range];
+  return days ? new Date(Date.now() - days * DAY) : null;
+};
+
+const agentSignupSchema = new Schema(
+  {
+    agent: { type: Schema.Types.ObjectId, ref: 'User', required: true },
+    user: { type: Schema.Types.ObjectId, ref: 'User', required: true, unique: true },
+    organization: { type: Schema.Types.ObjectId, ref: 'Organization' },
+    kind: { type: String, enum: ['user', 'organization'], required: true },
+    role: String,
+    pointsAwarded: { type: Number, default: 0 },
+  },
+  { timestamps: true }
+);
+agentSignupSchema.index({ agent: 1, createdAt: -1 });
+
+// Counts for today / 3 days / 7 days / 30 days / all time in one query
+agentSignupSchema.statics.statsFor = async function (agentId) {
+  const startOfToday = rangeStart('today');
+  const since = {
+    today: startOfToday,
+    '3d': rangeStart('3d'),
+    '7d': rangeStart('7d'),
+    '30d': rangeStart('30d'),
+    all: new Date(0),
+  };
+
+  const group = { _id: null, pointsEarned: { $sum: '$pointsAwarded' } };
+  for (const [key, date] of Object.entries(since)) {
+    group[`${key}_total`] = { $sum: { $cond: [{ $gte: ['$createdAt', date] }, 1, 0] } };
+    group[`${key}_orgs`] = {
+      $sum: { $cond: [{ $and: [{ $gte: ['$createdAt', date] }, { $eq: ['$kind', 'organization'] }] }, 1, 0] },
+    };
+  }
+
+  const [row] = await this.aggregate([
+    { $match: { agent: new mongoose.Types.ObjectId(agentId) } },
+    { $group: group },
+  ]);
+
+  const ranges = {};
+  for (const key of Object.keys(since)) {
+    const total = row?.[`${key}_total`] || 0;
+    const organizations = row?.[`${key}_orgs`] || 0;
+    ranges[key] = { total, organizations, users: total - organizations };
+  }
+  return { ranges, pointsEarned: row?.pointsEarned || 0 };
+};
+
+export const AgentSignup = mongoose.model('AgentSignup', agentSignupSchema);
 
 
 

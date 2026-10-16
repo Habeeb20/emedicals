@@ -20,6 +20,9 @@ import pharmacyRoutes from "./routes/pharmacy.routes.js"
 import shopRouter from "./routes/shopRoutes.js"
 import http from 'http';
 import memorialRoutes from './routes/memorialRoutes.js'
+import hospitalRoutes from "./routes/hospitalRoutes.js"
+import dashboardRouter from './routes/dashboardRoute.js'
+import hospitalMessageRoutes from './routes/hospitalMessageRoutes.js';
 connectDb()
 const app = express();
 const isProd = process.env.NODE_ENV === 'production';
@@ -56,15 +59,24 @@ app.get('/api/health', (_req, res) =>
 );
 
 // Routes
-app.use('/api', appointmentRoutes);
-app.use('/api', pharmacyRoutes);
+app.use('/api/hospital', hospitalRoutes)
+app.use('/api/memorial', memorialRoutes);
 app.use("/api/shop", shopRouter)
 app.use("/api/labs", labRoutes)
 app.use('/api/users', userRoutes);
 app.use('/api/super-admin', superAdminRoutes);
+app.use('/api/hospital/messages', hospitalMessageRoutes);
+app.use('/api', pharmacyRoutes);
+app.use('/api', dashboardRouter);
+app.use('/api', appointmentRoutes);
+
+
+
+
+
 app.use('/api', engagementRoutes)
 
-app.use('/api/memorial', memorialRoutes);
+
 
 app.use((err, _req, res, _next) => res.status(err.status || 500).json({ status: 'error', message: err.message }));
 // 404 + error handling (must come last)

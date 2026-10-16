@@ -1,14 +1,17 @@
 import { useEffect, useState } from 'react';
-import { useParams, Link } from 'react-router-dom';
-import { Printer } from 'lucide-react';
+import { ArrowLeft, Printer } from 'lucide-react';
 import StatusBadge, { FlagBadge, PaymentBadge } from './StatusBadge';
-import { labApi, errMsg, naira, dateFmt, inputCls } from './labApi';
+import { labApi, errMsg, naira, dateFmt } from './labApi';
 
 const small = 'w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-lab-500 focus:ring-2 focus:ring-lab-200';
 
-/** One screen for both sides: <LabOrderDetail mode="patient" /> or <LabOrderDetail mode="lab" /> */
-export default function LabOrderDetail({ mode = 'patient' }) {
-  const { id } = useParams();
+/**
+ * One screen for both sides, driven entirely by props (no router):
+ *   <LabOrderDetail mode="lab" orderId={id} onBack={() => ...} />
+ *   <LabOrderDetail mode="patient" orderId={id} onBack={() => ...} />
+ */
+export default function LabOrderDetail({ mode = 'patient', orderId, onBack }) {
+  const id = orderId;
   const isLab = mode === 'lab';
   const [order, setOrder] = useState(null);
   const [draft, setDraft] = useState({});
@@ -23,25 +26,43 @@ export default function LabOrderDetail({ mode = 'patient' }) {
       }])));
     }).catch((e) => setError(errMsg(e)));
 
-  useEffect(() => { load(); }, [id]);
+  useEffect(() => {
+    if (!id) { setError('No order selected.'); return; }
+    setOrder(null);
+    setError('');
+    load();
+  }, [id]);
 
   const run = async (fn) => {
     setBusy(true); setError('');
     try { await fn(); await load(); } catch (e) { setError(errMsg(e)); } finally { setBusy(false); }
   };
   const setField = (itemId, k, v) => setDraft((d) => ({ ...d, [itemId]: { ...d[itemId], [k]: v } }));
-  const save = () => run(() => labApi.saveResults(id, Object.entries(draft).map(([itemId, v]) => ({ itemId, ...v }))));
+  const payload = () => Object.entries(draft).map(([itemId, v]) => ({ itemId, ...v }));
+  const save = () => run(() => labApi.saveResults(id, payload()));
 
-  if (!order) return <p className="p-8 text-gray-500">{error || 'Loading…'}</p>;
+  const backBtn = onBack && (
+    <button onClick={onBack} className="inline-flex items-center gap-1 text-sm font-medium text-lab-700 hover:underline">
+      <ArrowLeft size={16} /> Back to orders
+    </button>
+  );
+
+  if (!order) {
+    return (
+      <div className="mx-auto max-w-4xl px-4 py-8">
+        {backBtn}
+        <p className={`mt-4 ${error ? 'text-danger' : 'text-gray-500'}`}>{error || 'Loading…'}</p>
+      </div>
+    );
+  }
 
   const editable = isLab && ['sample_collected', 'processing'].includes(order.status);
   const open = !['completed', 'cancelled'].includes(order.status);
   const canCancel = isLab ? open : order.status === 'ordered';
-  const back = isLab ? '/lab/orders' : '/labs/orders';
 
   return (
     <div className="mx-auto max-w-4xl px-4 py-8">
-      <Link to={back} className="text-sm font-medium text-lab-700 hover:underline">← Back to orders</Link>
+      {backBtn}
 
       <div className="mt-4 flex flex-wrap items-start justify-between gap-4">
         <div>
@@ -55,14 +76,15 @@ export default function LabOrderDetail({ mode = 'patient' }) {
         {isLab ? (
           <div>
             <p className="font-semibold text-navy-900">Patient</p>
-            <p className="text-gray-600">{order.patient.fullName}</p>
-            <p className="text-gray-600">{[order.patient.phone, order.patient.gender, order.patient.dateOfBirth && dateFmt(order.patient.dateOfBirth)].filter(Boolean).join(' · ')}</p>
+            <p className="text-gray-600">{order.patient?.fullName}</p>
+            <p className="text-gray-600">{[order.patient?.phone, order.patient?.gender, order.patient?.dateOfBirth && dateFmt(order.patient.dateOfBirth)].filter(Boolean).join(' · ')}</p>
+            {order.patient?.email && <p className="text-gray-600">{order.patient.email}</p>}
           </div>
         ) : (
           <div>
-            <p className="font-semibold text-navy-900">{order.lab.name}</p>
-            <p className="text-gray-600">{[order.lab.address?.street, order.lab.address?.city].filter(Boolean).join(', ')}</p>
-            {order.lab.phone && <p className="text-gray-600">{order.lab.phone}</p>}
+            <p className="font-semibold text-navy-900">{order.lab?.name}</p>
+            <p className="text-gray-600">{[order.lab?.address?.street, order.lab?.address?.city].filter(Boolean).join(', ')}</p>
+            {order.lab?.phone && <p className="text-gray-600">{order.lab.phone}</p>}
           </div>
         )}
         <div>
@@ -87,10 +109,10 @@ export default function LabOrderDetail({ mode = 'patient' }) {
 
             {editable ? (
               <div className="mt-4 grid gap-3 sm:grid-cols-4">
-                <input className={small} placeholder="Result" value={draft[i._id]?.result} onChange={(e) => setField(i._id, 'result', e.target.value)} />
-                <input className={small} placeholder="Unit" value={draft[i._id]?.unit} onChange={(e) => setField(i._id, 'unit', e.target.value)} />
-                <input className={small} placeholder="Reference range" value={draft[i._id]?.referenceRange} onChange={(e) => setField(i._id, 'referenceRange', e.target.value)} />
-                <select className={small} value={draft[i._id]?.flag} onChange={(e) => setField(i._id, 'flag', e.target.value)}>
+                <input className={small} placeholder="Result" value={draft[i._id]?.result ?? ''} onChange={(e) => setField(i._id, 'result', e.target.value)} />
+                <input className={small} placeholder="Unit" value={draft[i._id]?.unit ?? ''} onChange={(e) => setField(i._id, 'unit', e.target.value)} />
+                <input className={small} placeholder="Reference range" value={draft[i._id]?.referenceRange ?? ''} onChange={(e) => setField(i._id, 'referenceRange', e.target.value)} />
+                <select className={small} value={draft[i._id]?.flag ?? ''} onChange={(e) => setField(i._id, 'flag', e.target.value)}>
                   <option value="">Flag</option>
                   {['normal', 'low', 'high', 'critical'].map((f) => <option key={f} value={f}>{f}</option>)}
                 </select>
@@ -119,7 +141,7 @@ export default function LabOrderDetail({ mode = 'patient' }) {
       <div className="mt-6 flex flex-wrap gap-3 print:hidden">
         {isLab && order.status === 'ordered' && <button disabled={busy} onClick={() => run(() => labApi.collect(id))} className="btn-primary">Mark sample collected</button>}
         {editable && <button disabled={busy} onClick={save} className="btn-outline">Save results</button>}
-        {editable && order.status === 'processing' && <button disabled={busy} onClick={() => run(async () => { await labApi.saveResults(id, Object.entries(draft).map(([itemId, v]) => ({ itemId, ...v }))); await labApi.complete(id); })} className="btn-primary">Save and complete</button>}
+        {editable && order.status === 'processing' && <button disabled={busy} onClick={() => run(async () => { await labApi.saveResults(id, payload()); await labApi.complete(id); })} className="btn-primary">Save and complete</button>}
         {isLab && order.status !== 'cancelled' && order.paymentStatus === 'unpaid' && <button disabled={busy} onClick={() => run(() => labApi.setPayment(id, 'paid'))} className="btn-outline">Mark as paid</button>}
         {canCancel && <button disabled={busy} onClick={() => window.confirm('Cancel this order?') && run(() => labApi.cancelOrder(id))} className="rounded-full border border-danger px-5 py-2.5 text-sm font-semibold text-danger hover:bg-danger-light">Cancel order</button>}
         {order.status === 'completed' && <button onClick={() => window.print()} className="btn-outline inline-flex items-center gap-2"><Printer size={16} />Print results</button>}

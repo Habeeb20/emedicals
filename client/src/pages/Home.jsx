@@ -9,6 +9,7 @@ import Modules from '../components/Home/Modules';
 import HowItWorks from '../components/Home/HowItWorks';
 import CTA from '../components/Home/CTA';
 import CareCarousel from '../components/Home/CareCarousel';
+import Footer from '../components/Footer';
 
 // Classes are written out in full so Tailwind can see them. Every colour comes from src/theme/colors.js.
 const modules = [
@@ -32,6 +33,7 @@ export default function Home() {
       <Modules />
       <HowItWorks/>
       <CTA/>
+
       
       
  
@@ -61,6 +63,7 @@ export default function Home() {
           ))}
         </section>
       </main>
+            <Footer />
     </div>
   );
 }

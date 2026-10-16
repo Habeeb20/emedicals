@@ -98,7 +98,8 @@ import { useAuth } from '@/context/AuthContext.jsx';
 const links = [
   { label: 'Drugs', href: '/shop' },
   { label: 'Memorials', href: '/memorial' },
-  { label: 'How it works', href: '/#how' },
+  { label: 'Hospitals', href: '/hospitals' },
+  { label: 'Doctors', href: '/doctors' },
 ];
 
 const AuthButtons = ({ user, className = '' }) =>

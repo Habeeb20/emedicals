@@ -1,8 +1,63 @@
 import { useEffect, useState } from 'react';
 import { Plus, Pencil, X } from 'lucide-react';
 import { labApi, errMsg, naira, inputCls } from './labApi';
+import {
+  TEST_PRESETS, CATEGORIES, SAMPLE_TYPES, TURNAROUNDS, PRICES, RANGES,
+} from './labPresets';
 
 const EMPTY = { name: '', code: '', category: '', price: '', sampleType: '', turnaroundHours: '', referenceRange: '' };
+const OTHER = '__other';
+
+// Dropdown with an "Other" option that reveals a text input
+function SelectField({ value, onChange, options, placeholder, type = 'text', required, className = '' }) {
+  const [forceCustom, setForceCustom] = useState(false);
+  const str = value === undefined || value === null ? '' : String(value);
+  const inList = options.some((o) => String(o.value) === str);
+
+  // if the value later matches a listed option (e.g. preset autofill), go back to the dropdown
+  useEffect(() => { if (inList) setForceCustom(false); }, [inList]);
+
+  const showInput = forceCustom || (str !== '' && !inList);
+
+  const handleSelect = (e) => {
+    const v = e.target.value;
+    if (v === OTHER) { setForceCustom(true); onChange(''); }
+    else { setForceCustom(false); onChange(v); }
+  };
+
+  return (
+    <div className={className}>
+      <select required={required} value={showInput ? OTHER : str} onChange={handleSelect} className={`${inputCls} capitalize`}>
+        <option value="">{placeholder}</option>
+        {options.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+        <option value={OTHER}>Other (type your own)</option>
+      </select>
+      {showInput && (
+        <input
+          required={required}
+          type={type}
+          min={type === 'number' ? 0 : undefined}
+          placeholder={`Enter ${placeholder.toLowerCase()}`}
+          value={str}
+          onChange={(e) => onChange(e.target.value)}
+          className={`${inputCls} mt-2`}
+        />
+      )}
+    </div>
+  );
+}
+
+const plain = (arr) => arr.map((v) => ({ value: v, label: v }));
+
+const categoryOpts = plain(CATEGORIES);
+const sampleOpts = plain(SAMPLE_TYPES);
+const rangeOpts = plain(RANGES);
+const turnaroundOpts = TURNAROUNDS.map((h) => ({
+  value: String(h),
+  label: h < 24 ? `${h} hour${h > 1 ? 's' : ''}` : `${h / 24} day${h / 24 > 1 ? 's' : ''} (${h} hrs)`,
+}));
+const priceOpts = PRICES.map((p) => ({ value: String(p), label: naira(p) }));
+const nameOpts = TEST_PRESETS.map((t) => ({ value: t.name, label: t.name, category: t.category }));
 
 export default function LabCatalogManager() {
   const [tests, setTests] = useState(null);
@@ -15,7 +70,16 @@ export default function LabCatalogManager() {
   useEffect(() => { load(); }, []);
 
   const openForm = (t) => { setError(''); setEditId(t?._id || null); setForm(t ? { ...EMPTY, ...t } : EMPTY); };
-  const set = (k) => (e) => setForm({ ...form, [k]: e.target.value });
+  const setField = (k) => (v) => setForm((f) => ({ ...f, [k]: v }));
+
+  // choosing a known test fills in the other fields
+  const pickName = (name) => {
+    const p = TEST_PRESETS.find((t) => t.name === name);
+    setForm((f) => p
+      ? { ...f, name: p.name, code: p.code, category: p.category, sampleType: p.sampleType,
+          turnaroundHours: String(p.turnaroundHours), referenceRange: p.referenceRange }
+      : { ...f, name });
+  };
 
   const submit = async (e) => {
     e.preventDefault(); setBusy(true); setError('');
@@ -26,7 +90,11 @@ export default function LabCatalogManager() {
     } catch (err) { setError(errMsg(err)); } finally { setBusy(false); }
   };
 
-  const toggle = (t) => labApi.updateTest(t._id, { isActive: !t.isActive }).then(load);
+  const toggle = (t) =>
+    labApi.updateTest(t._id, { isActive: !t.isActive }).then(load).catch((e) => setError(errMsg(e)));
+
+  // code options follow the selected test, otherwise list all codes
+  const codeOpts = plain([...new Set(TEST_PRESETS.map((t) => t.code))]);
 
   return (
     <div className="mx-auto max-w-5xl px-4 py-8">
@@ -75,13 +143,14 @@ export default function LabCatalogManager() {
               <button type="button" onClick={() => setForm(null)} aria-label="Close"><X size={22} /></button>
             </div>
             <div className="mt-5 grid gap-4 sm:grid-cols-2">
-              <input required placeholder="Test name" value={form.name} onChange={set('name')} className={`${inputCls} sm:col-span-2`} />
-              <input placeholder="Code (optional)" value={form.code} onChange={set('code')} className={inputCls} />
-              <input placeholder="Category, e.g. hematology" value={form.category} onChange={set('category')} className={inputCls} />
-              <input required type="number" min="0" placeholder="Price (₦)" value={form.price} onChange={set('price')} className={inputCls} />
-              <input placeholder="Sample type, e.g. blood" value={form.sampleType} onChange={set('sampleType')} className={inputCls} />
-              <input type="number" min="0" placeholder="Turnaround (hours)" value={form.turnaroundHours} onChange={set('turnaroundHours')} className={inputCls} />
-              <input placeholder="Reference range" value={form.referenceRange} onChange={set('referenceRange')} className={inputCls} />
+              <SelectField required className="sm:col-span-2" placeholder="Test name"
+                value={form.name} onChange={pickName} options={nameOpts} />
+              <SelectField placeholder="Code" value={form.code} onChange={setField('code')} options={codeOpts} />
+              <SelectField placeholder="Category" value={form.category} onChange={setField('category')} options={categoryOpts} />
+              <SelectField required type="number" placeholder="Price (₦)" value={form.price} onChange={setField('price')} options={priceOpts} />
+              <SelectField placeholder="Sample type" value={form.sampleType} onChange={setField('sampleType')} options={sampleOpts} />
+              <SelectField type="number" placeholder="Turnaround time" value={form.turnaroundHours} onChange={setField('turnaroundHours')} options={turnaroundOpts} />
+              <SelectField placeholder="Reference range" value={form.referenceRange} onChange={setField('referenceRange')} options={rangeOpts} />
             </div>
             {error && <p className="mt-4 text-sm text-danger">{error}</p>}
             <button disabled={busy} className="btn-primary mt-6 w-full disabled:opacity-50">{busy ? 'Saving…' : 'Save test'}</button>

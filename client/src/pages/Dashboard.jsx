@@ -1,11 +1,18 @@
 
 
+
+
+
+
+
+
 // import { useEffect, useState } from 'react';
 // import { Navigate, useSearchParams } from 'react-router-dom';
 // import { toast } from 'sonner';
 // import {
 //   LayoutDashboard, CalendarDays, Users, Pill, FlaskConical, FileText, Store,
 //   Stethoscope, ClipboardList, Landmark, MessageCircle, UserRound, LogOut, Menu, X, ChevronDown,
+//   Flower2, Building2,
 // } from 'lucide-react';
 // import Logo from '@/components/Logo.jsx';
 // import api, { getErrorMessage } from '@/lib/api.js';
@@ -44,6 +51,15 @@
 // import { useParamOrQuery } from './DashboardRideirect.jsx';
 // import { ShopOrderPage, ShopOrdersPage } from './pharmacy/shop/OrderPage.jsx';
 // import PharmacyOrdersPage from './pharmacy/PharmacyOrderPage.jsx';
+
+// // Memorial pages (mortuary + cemetery). Adjust the folder if you put these files somewhere else.
+// import MemorialDirectoryPage from './memorial/MemorialDirectoryPage.jsx';
+// import MemorialProfilePage from './memorial/MemorialProfilePage.jsx';
+// import MyMemorialBookingsPage from './memorial/MyBookingsPage.jsx';
+// import {
+//   MemorialOverviewPage, MemorialBookingsPage, MemorialRegisterPage, MemorialPlotsPage,
+//   MemorialAccountsPage, MemorialReviewsPage, MemorialSettingsPage,
+// } from './memorial/owner/OwnerPages.jsx';
 // /* ------------------------------------------------------------------ */
 // /* Config                                                              */
 // /* ------------------------------------------------------------------ */
@@ -61,13 +77,13 @@
 // const NAV_ITEMS = [
 //   { key: 'overview',         label: 'Overview',         icon: LayoutDashboard, module: 'primary',  roles: null },
 //   {
-//     key: 'appointments', label: 'Appointments', icon: CalendarDays, module: 'primary',
+//     key: 'appointments', label: 'Doctor Appointments', icon: CalendarDays, module: 'primary',
 //     roles: ['patient', 'doctor', 'nurse', 'hospital_admin'],
 //     children: [
 //       { key: 'find-care',            label: 'Find care',          roles: ['patient'] },
 //       { key: 'my-appointments',      label: 'My appointments',    roles: ['patient'] },
 //       { key: 'manage-appointments',  label: 'Appointment queue',  roles: ['doctor', 'hospital_admin'] },
-//       { key: 'quick-chat',           label: 'Quick chat',         roles: ['patient', 'doctor', 'hospital_admin'] },
+//       { key: 'quick-chat',           label: 'Quick chat with a Doctor',         roles: ['patient', 'doctor', 'hospital_admin'] },
 //       { key: 'appointment-settings', label: 'Fees and settings',  roles: ['doctor', 'hospital_admin'] },
 //     ],
 //   },
@@ -111,9 +127,9 @@
 //   },
 //   {
 //     key: 'Orders', label: 'Order', icon: FlaskConical, module: 'Order',
-//     roles: ['patient', 'doctor', 'lab_tech'],
+//     roles: ['patient', 'doctor'],
 //     children: [
-//       { key: 'myOrder',        label: 'My Orders',       roles: ['patient'] },
+//       { key: 'myOrder',        label: 'My Orders',       roles: ['patient', 'doctor'] },
 //       // { key: 'my-lab-orders',    label: 'My lab orders',    roles: ['patient'] },
 //       // { key: 'lab-requests',     label: 'Order a test',     roles: ['doctor'] },
 //       // { key: 'lab-results',      label: 'Patient results',  roles: ['doctor'] },
@@ -124,8 +140,44 @@
 
 //   { key: 'medical-records',  label: 'Medical records',  icon: FileText,        module: 'primary',  roles: ['patient'] },
 //   { key: 'staff',            label: 'Staff',            icon: Stethoscope,     module: 'primary',  roles: ['hospital_admin'] },
-//   { key: 'mortuary-records', label: 'Mortuary records', icon: ClipboardList,   module: 'memorial', roles: ['mortuary_officer'] },
-//   { key: 'burial-plots',     label: 'Burial plots',     icon: Landmark,        module: 'memorial', roles: ['cemetery_officer'] },
+
+//   // ---- Memorial services: families find and book ----
+//   {
+//     key: 'memorial', label: 'Memorial services', icon: Flower2, module: 'memorial',
+//     roles: ['patient', 'doctor', 'nurse', 'hospital_admin', 'pharmacist'],
+//     children: [
+//       // { key: 'memorial-find',     label: 'Find mortuary or cemetery', roles: ['patient', 'doctor', 'nurse', 'hospital_admin', 'pharmacist'] },
+//       { key: 'memorial-profile',  label: 'Facility profile',          roles: ['patient', 'doctor', 'nurse', 'hospital_admin', 'pharmacist'], hidden: true, activeAs: 'memorial-find' },
+//       { key: 'memorial-bookings', label: 'My bookings',               roles: ['patient', 'doctor', 'nurse', 'hospital_admin', 'pharmacist'] },
+//     ],
+//   },
+//   // ---- Mortuary officers ----
+//   {
+//     key: 'mortuary', label: 'Mortuary', icon: Building2, module: 'memorial',
+//     roles: ['mortuary_officer'],
+//     children: [
+//       { key: 'mortuary-overview', label: 'Overview', roles: ['mortuary_officer'] },
+//       { key: 'mortuary-bookings', label: 'Bookings', roles: ['mortuary_officer'] },
+//       { key: 'mortuary-register', label: 'Register', roles: ['mortuary_officer'] },
+//       { key: 'mortuary-accounts', label: 'Accounts', roles: ['mortuary_officer'] },
+//       { key: 'mortuary-reviews',  label: 'Reviews',  roles: ['mortuary_officer'] },
+//       { key: 'mortuary-settings', label: 'Settings', roles: ['mortuary_officer'] },
+//     ],
+//   },
+//   // ---- Cemetery officers ----
+//   {
+//     key: 'cemetery', label: 'Cemetery', icon: Flower2, module: 'memorial',
+//     roles: ['cemetery_officer'],
+//     children: [
+//       { key: 'cemetery-overview', label: 'Overview', roles: ['cemetery_officer'] },
+//       { key: 'cemetery-bookings', label: 'Bookings', roles: ['cemetery_officer'] },
+//       { key: 'cemetery-plots',    label: 'Plots',    roles: ['cemetery_officer'] },
+//       { key: 'cemetery-accounts', label: 'Accounts', roles: ['cemetery_officer'] },
+//       { key: 'cemetery-reviews',  label: 'Reviews',  roles: ['cemetery_officer'] },
+//       { key: 'cemetery-settings', label: 'Settings', roles: ['cemetery_officer'] },
+//     ],
+//   },
+
 //   { key: 'messages',         label: 'Messages',         icon: MessageCircle,   module: 'info',     roles: null },
 //   { key: 'profile',          label: 'Profile',          icon: UserRound,       module: 'primary',  roles: null },
 //   { key: 'profileSettings',  label: 'Profile Settings', icon: UserRound,       module: 'primary',  roles: null },
@@ -416,6 +468,27 @@
 
 //   'pharmacy-reports': PharmacyReportsPage,
 
+//   // memorial dropdown: families
+//   'memorial-find': MemorialDirectoryPage,
+//   'memorial-profile': MemorialProfilePage,
+//   'memorial-bookings': MyMemorialBookingsPage,
+
+//   // mortuary dropdown: mortuary officers
+//   'mortuary-overview': MemorialOverviewPage,
+//   'mortuary-bookings': MemorialBookingsPage,
+//   'mortuary-register': MemorialRegisterPage,
+//   'mortuary-accounts': MemorialAccountsPage,
+//   'mortuary-reviews': MemorialReviewsPage,
+//   'mortuary-settings': MemorialSettingsPage,
+
+//   // cemetery dropdown: cemetery officers
+//   'cemetery-overview': MemorialOverviewPage,
+//   'cemetery-bookings': MemorialBookingsPage,
+//   'cemetery-plots': MemorialPlotsPage,
+//   'cemetery-accounts': MemorialAccountsPage,
+//   'cemetery-reviews': MemorialReviewsPage,
+//   'cemetery-settings': MemorialSettingsPage,
+
 //   // appointments dropdown
 //   'find-care': ProviderSearchPage,
 //   'my-appointments': MyAppointmentsPage,
@@ -598,18 +671,26 @@
 
 
 
+
+
+
+
+
+
+
 import { useEffect, useState } from 'react';
 import { Navigate, useSearchParams } from 'react-router-dom';
 import { toast } from 'sonner';
 import {
   LayoutDashboard, CalendarDays, Users, Pill, FlaskConical, FileText, Store,
   Stethoscope, ClipboardList, Landmark, MessageCircle, UserRound, LogOut, Menu, X, ChevronDown,
-  Flower2, Building2,
+  Flower2, Building2, Activity,UserPlus, Gift,
 } from 'lucide-react';
 import Logo from '@/components/Logo.jsx';
 import api, { getErrorMessage } from '@/lib/api.js';
 import { useAuth } from '@/context/AuthContext.jsx';
-
+import StaffInboxPage from './hospital/StaffinboxPage.jsx';
+import PatientMessagesPage from './hospital/PatientMessagePage.jsx';
 // Each tab lives in its own file. Import it here, then add it to COMPONENTS below.
 import OverviewTab from './dashboard/OverviewTab.jsx';
 import ProfileTab from './dashboard/ProfileTab.jsx';
@@ -652,6 +733,28 @@ import {
   MemorialOverviewPage, MemorialBookingsPage, MemorialRegisterPage, MemorialPlotsPage,
   MemorialAccountsPage, MemorialReviewsPage, MemorialSettingsPage,
 } from './memorial/owner/OwnerPages.jsx';
+
+// Hospital pages: patient registry, visits, admissions, wards, billing, staff, overview
+
+import VisitsPage from './hospital/VisitsPage.jsx';
+import AdmissionsPage from './hospital/AdmissionsPage.jsx';
+import WardsPage from './hospital/WardsPage.jsx';
+import BillingPage from './hospital/BillingPage.jsx';
+import HospitalOverviewPage from './hospital/HospitalOverview.jsx';
+import StaffPage from './hospital/StaffPage.jsx';
+import { MedicalRecordsPage, MyBillsPage } from './hospital/PatientPortal.jsx';
+import { AgentRegisterPage, AgentSignupsPage } from './agent/Agentsignups.jsx';
+import { AgentReferralPage } from './agent/AgentReferralPage.jsx';
+import PatientsPage from './hospital/PatientsPage.jsx';
+
+import DoctorLabOrders from './appointments/DoctorLabOrders.jsx';
+import HospitalDirectoryPage from './hospital/HospitalDirectoryPage.jsx';
+import MyHospitalsPage from './hospital/MyHosipitalPage.jsx';
+import MyCareHistoryPage from './hospital/MyCareHistoryPage.jsx';
+import HospitalProfilePage from './hospital/HospitalProfilePage.jsx';
+
+
+
 /* ------------------------------------------------------------------ */
 /* Config                                                              */
 /* ------------------------------------------------------------------ */
@@ -669,17 +772,39 @@ import {
 const NAV_ITEMS = [
   { key: 'overview',         label: 'Overview',         icon: LayoutDashboard, module: 'primary',  roles: null },
   {
-    key: 'appointments', label: 'Appointments', icon: CalendarDays, module: 'primary',
+    key: 'appointments', label: 'Doctor Appointments', icon: CalendarDays, module: 'primary',
     roles: ['patient', 'doctor', 'nurse', 'hospital_admin'],
     children: [
       { key: 'find-care',            label: 'Find care',          roles: ['patient'] },
       { key: 'my-appointments',      label: 'My appointments',    roles: ['patient'] },
       { key: 'manage-appointments',  label: 'Appointment queue',  roles: ['doctor', 'hospital_admin'] },
-      { key: 'quick-chat',           label: 'Quick chat',         roles: ['patient', 'doctor', 'hospital_admin'] },
+      { key: 'quick-chat',           label: 'Quick chat with a Doctor',         roles: ['patient', 'doctor', 'hospital_admin'] },
       { key: 'appointment-settings', label: 'Fees and settings',  roles: ['doctor', 'hospital_admin'] },
     ],
   },
   { key: 'patients',         label: 'Patients',         icon: Users,           module: 'primary',  roles: ['doctor', 'nurse', 'hospital_admin'] },
+
+  // ---- Hospital care: visits, admissions, wards, billing ----
+  {
+    key: 'hospital', label: 'Hospital care', icon: Activity, module: 'primary',
+    roles: ['patient', 'doctor', 'nurse', 'hospital_admin'],
+    children: [
+      // ---- Everyone: browse hospitals. The detail page is hidden from the sidebar and opened from the list ----
+      { key: 'find-hospital',     label: 'Find a hospital',            roles: ['patient', 'doctor', 'nurse', 'hospital_admin'] },
+      { key: 'hospital-profile',  label: 'Hospital details',           roles: ['patient', 'doctor', 'nurse', 'hospital_admin'], hidden: true, activeAs: 'find-hospital' },
+      { key: 'my-hospitals',      label: 'My hospitals',               roles: ['patient'] },
+      { key: 'my-care-history',   label: 'My care history',            roles: ['patient'] },
+
+      // ---- Hospital staff ----
+      { key: 'hospital-overview', label: 'Hospital overview',          roles: ['hospital_admin'] },
+      { key: 'visits',            label: 'Visits and consultations',   roles: ['doctor', 'nurse', 'hospital_admin'] },
+      { key: 'admissions',        label: 'Admissions',                 roles: ['doctor', 'nurse', 'hospital_admin'] },
+      { key: 'wards',             label: 'Wards and beds',             roles: ['hospital_admin'] },
+      { key: 'billing',           label: 'Billing',                    roles: ['hospital_admin'] },
+      { key: 'my-bills',          label: 'My bills',                   roles: ['patient'] },
+    ],
+  },
+
   // Pharmacists work from the Pharmacy dropdown below, so they no longer need this item
   { key: 'prescriptions',    label: 'Prescriptions',    icon: Pill,            module: 'pharmacy', roles: ['patient', 'doctor'] },
   {
@@ -711,10 +836,12 @@ const NAV_ITEMS = [
     children: [
       { key: 'find-labs',        label: 'Find a lab',       roles: ['patient'] },
       { key: 'my-lab-orders',    label: 'My lab orders',    roles: ['patient'] },
-      { key: 'lab-requests',     label: 'Order a test',     roles: ['doctor'] },
-      { key: 'lab-results',      label: 'Patient results',  roles: ['doctor'] },
+      { key: 'lab-orders',     label: 'Order a test',     roles: ['doctor'] },
+     
       { key: 'lab-queue',        label: 'Order queue',      roles: ['lab_tech'] },
       { key: 'lab-test-catalog', label: 'Test catalogue',   roles: ['lab_tech'] },
+ 
+
     ],
   },
   {
@@ -771,6 +898,10 @@ const NAV_ITEMS = [
   },
 
   { key: 'messages',         label: 'Messages',         icon: MessageCircle,   module: 'info',     roles: null },
+    // ---- Agents ----
+  { key: 'agent-register', label: 'Register someone', icon: UserPlus,      module: 'primary', roles: ['agent'] },
+  { key: 'agent-signups',  label: 'My signups',       icon: ClipboardList, module: 'primary', roles: ['agent'] },
+  // { key: 'agent-referral', label: 'Referral link',    icon: Gift,          module: 'primary', roles: ['agent'] },
   { key: 'profile',          label: 'Profile',          icon: UserRound,       module: 'primary',  roles: null },
   { key: 'profileSettings',  label: 'Profile Settings', icon: UserRound,       module: 'primary',  roles: null },
 ];
@@ -784,6 +915,7 @@ const ROLE_LABELS = {
   hospital_admin: 'Hospital admin',
   mortuary_officer: 'Mortuary officer',
   cemetery_officer: 'Cemetery officer',
+    agent: 'Agent',
   super_admin: 'Super admin',
 };
 
@@ -1035,6 +1167,29 @@ const COMPONENTS = {
   
   "myOrder":ShopOrdersPage,
 
+  // hospital: registry and staff
+  patients: PatientsPage,
+  staff: StaffPage,
+  'medical-records': MedicalRecordsPage,
+
+
+  // hospital care dropdown
+  'hospital-overview': HospitalOverviewPage,
+  visits: VisitsPage,
+  admissions: AdmissionsPage,
+  wards: WardsPage,
+  billing: BillingPage,
+  'my-bills': MyBillsPage,
+  'my-record': MedicalRecordsPage,
+  'hospital': PatientsPage,
+  'hospital-messages': PatientMessagesPage,
+'hospital-inbox': StaffInboxPage,
+'find-hospital': HospitalDirectoryPage,
+  'hospital-profile': HospitalProfilePage,
+  'my-hospitals': MyHospitalsPage,
+  'my-care-history': MyCareHistoryPage,
+
+
   // lab dropdown
   'my-lab-orders': MyLabOrders,
   'find-labs': LabDirectory,
@@ -1042,6 +1197,7 @@ const COMPONENTS = {
   'lab-results': LabOrderDetail,
   'lab-queue': LabOrderQueue,
   'lab-test-catalog': LabCatalogManager,
+  'lab-orders': DoctorLabOrders ,
 
   // pharmacy dropdown: patients
   'find-pharmacy': FindPharmacyPage,
@@ -1087,6 +1243,13 @@ const COMPONENTS = {
   'manage-appointments': ProviderAppointmentsPage,
   'quick-chat': QuickChatPage,
   'appointment-settings': PaymentSettingsPage,
+
+
+  //agent
+    'agent-register': AgentRegisterPage,
+  'agent-signups': AgentSignupsPage,
+  'agent-referral': AgentReferralPage,
+
 
   // other sidebar items
   messages: ChatPage,
@@ -1254,3 +1417,16 @@ const PharmacyStaffChat = (props) => <PharmacyChatPage {...props} staff />;
     </div>
   );
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
