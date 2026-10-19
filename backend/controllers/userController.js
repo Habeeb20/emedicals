@@ -312,8 +312,8 @@ const registerAccount = async (body, { referrer = null, agent = null } = {}) => 
 
   try {
     await axios.post(EDIRECT_AUTH, {
-      platform: 'emedicals', full_name: fullName, email,
-      userId: user._id.toString(), password, role: 'user',
+      platform: 'emedicals', first_name: fullName,last_name: fullName, email,
+      userId: user._id.toString(), password, password_confirmation:password,  phone: phone,  role: 'user',
     });
   } catch (err) {
     console.error('Edirect failed:', err.response?.data || err.message);
@@ -827,3 +827,28 @@ export const updateMyAvatar = async (req, res) => {
     return handleError(res, err, 'updateMyAvatar');
   }
 };
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
